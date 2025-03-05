@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  app-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bot-backend:latest
+    container_name: bot-backend
+    restart: always
+    ports:
+      - "8100:8100"
+    environment:
+      - POSTGRES_DB=bot_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-b:5432/bot_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - SPRING_JPA_HIBERNATE_DDL_AUTO= update
+      - JAVA_TOOL_OPTIONS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+    depends_on:
+      - db-b
+    networks:
+      - secure-network
+    volumes:
+      - ./logs:/app/logs
+    security_opt:
+      - no-new-privileges:true
+
+  db-b:
+    image: postgres:16-alpine
+    container_name: postgres-bot-dbb
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_DB=bot_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    networks:
+      - secure-network
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+
+networks:
+  secure-network:
+    driver: bridge

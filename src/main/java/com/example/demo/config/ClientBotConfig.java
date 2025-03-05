@@ -1,0 +1,32 @@
+package com.example.demo.config;
+
+import lombok.Data;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class ClientBotConfig {
+
+    @Value("${client.bot.username}")
+    private String botName;
+
+    @Value("${client.bot.token}")
+    private String token;
+
+    public String getBotName() {
+        return botName;
+    }
+
+    public void setBotName(String botName) {
+        this.botName = botName;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+}
+
