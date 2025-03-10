@@ -14,11 +14,22 @@ public class Orders {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "chat_id", nullable = false)
-    private Long chatId;
+    @Column(name = "chat_id", nullable = false, updatable = false, insertable = false)
+    private Long chatId; // Mijoz ID'si saqlanadi, lekin faqat o‘qish uchun
+
+    @ManyToOne
+    @JoinColumn(name = "chat_id", referencedColumnName = "chatId", nullable = false)
+    private Client client; // Yangi qo‘shilgan bog‘liqlik
+
+    @Column(name = "user_name")
+    private String userName;
+
+    @Column(name = "user_phone")
+    private String userPhone;
 
     @Column(name = "order_details", columnDefinition = "TEXT", nullable = false)
     private String orderDetails;
+
 
     @Column(name = "total_price", nullable = false)
     private Double totalPrice;
@@ -26,44 +37,93 @@ public class Orders {
     @Column(name = "order_date", nullable = false)
     private LocalDateTime orderDate;
 
-    // Default constructor for JPA
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private OrderStatus status;
+
     public Orders() {}
 
-    public Orders(Long chatId, Map<Long, Integer> userBasket, Double totalPrice, String orderDate) {
-        this.chatId = chatId;
-        this.orderDetails = formatOrderDetails(userBasket); // Basketni stringga aylantiramiz
+    public Orders(Client client, String userName, String userPhone, String orderDetails, Double totalPrice, LocalDateTime orderDate, OrderStatus status) {
+        this.client = client;
+        this.chatId = client.getChatId(); // Client obyektidan chatId olinadi
+        this.userName = userName;
+        this.userPhone = userPhone;
+        this.orderDetails = orderDetails;
         this.totalPrice = totalPrice;
-        this.orderDate = LocalDateTime.parse(orderDate, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        this.orderDate = orderDate;
+        this.status = status;
     }
 
-    private String formatOrderDetails(Map<Long, Integer> userBasket) {
-        StringBuilder details = new StringBuilder();
-        userBasket.forEach((foodId, quantity) -> details.append("Food ID: ")
-                .append(foodId)
-                .append(", Quantity: ")
-                .append(quantity)
-                .append("\n"));
-        return details.toString();
+
+
+    // GETTER VA SETTERLAR
+
+    public Client getClient() {
+        return client;
     }
 
-    // Getters and setters
-    public Long getId() {
-        return id;
+    public void setClient(Client client) {
+        this.client = client;
+        this.chatId = client.getChatId(); // Mijoz o‘zgarsa, chatId ham moslashadi
     }
 
     public Long getChatId() {
         return chatId;
     }
 
+    public String getUserName() {
+        return userName;
+    }
+
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getUserPhone() {
+        return userPhone;
+    }
+
+    public void setUserPhone(String userPhone) {
+        this.userPhone = userPhone;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
     public String getOrderDetails() {
         return orderDetails;
+    }
+
+    public void setOrderDetails(String orderDetails) {
+        this.orderDetails = orderDetails;
     }
 
     public Double getTotalPrice() {
         return totalPrice;
     }
 
+    public void setTotalPrice(Double totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+
     public LocalDateTime getOrderDate() {
         return orderDate;
+    }
+
+    public void setOrderDate(LocalDateTime orderDate) {
+        this.orderDate = orderDate;
+    }
+
+    public OrderStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(OrderStatus status) {
+        this.status = status;
     }
 }

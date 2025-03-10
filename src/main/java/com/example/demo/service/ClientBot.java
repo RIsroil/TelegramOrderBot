@@ -2,8 +2,19 @@ package com.example.demo.service;
 
 import com.example.demo.config.ClientBotConfig;
 import com.example.demo.model.*;
+import com.example.demo.repository.ClientRepository;
+import com.example.demo.repository.MenuRepository;
+import com.example.demo.repository.OrderHistoryRepository;
+import com.example.demo.repository.OrdersRepository;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -19,18 +30,33 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.time.LocalDateTime;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class ClientBot extends TelegramLongPollingBot {
 
     private final ClientBotConfig config;
+    @Autowired
+    private OrderHistoryRepository orderHistoryRepository;
+
 
     @Autowired
     private MenuRepository menuRepository;
 
     @Autowired
     private ClientRepository clientRepository;
+
+    @Autowired
+    private OrdersRepository ordersRepository;
+
+    private static final long ADMIN_BOT_CHAT_ID = 1291967688L;
+    private static final long HISOBOT_Group_CHAT_ID = -1002265983705L;
+
+    private static final long groupId = -1002332417212L;
+
 
     private final Map<Long, Map<Long, Integer>> orders = new HashMap<>();
     private final Map<Long, Long> currentOrder = new HashMap<>();
@@ -118,6 +144,7 @@ public class ClientBot extends TelegramLongPollingBot {
         long chatId;
         Client client;
 
+
         if (update.hasMessage() && update.getMessage().hasContact()) {
             chatId = update.getMessage().getChatId();
             client = clientRepository.findById(chatId).orElse(null);
@@ -131,10 +158,11 @@ public class ClientBot extends TelegramLongPollingBot {
             return;
         }
 
-//        if (update.hasMessage() && update.getMessage().hasText()) {
-//            chatId = update.getMessage().getChatId();
-//            System.out.println("Guruh ID: " + chatId);
-//        }
+         // // Group Id sini olish
+        if (update.hasMessage() && update.getMessage().hasText()) {
+            chatId = update.getMessage().getChatId();
+            System.out.println("Guruh ID: " + chatId);
+        }
 
 
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -151,11 +179,7 @@ public class ClientBot extends TelegramLongPollingBot {
                     clientRepository.save(client);
                     sendMessages(chatId, "Assalomu alaykum! Botimizga xush kelibsiz! Iltimos, ismingizni kiriting:");
                     return;
-                } else if (
-                        client.getName() == null
-                        || Objects.equals(client.getName(), "Menu")
-                        ||Objects.equals(client.getName(), "Savatcha")
-                        ||Objects.equals(client.getName(), "Buyurtma berish")) {
+                } else if (client.getName() == null || Objects.equals(client.getName(), "Menu") || Objects.equals(client.getName(), "Savatcha") || Objects.equals(client.getName(), "Buyurtma berish")) {
                     sendMessages(chatId, "Iltimos, ismingizni kiriting:");
                     return;
                 } else if (client.getPhoneNumber() == null) {
@@ -207,11 +231,7 @@ public class ClientBot extends TelegramLongPollingBot {
             // === 4. Asosiy menyu komandalarini tekshirish ===
             switch (message) {
                 case "yordam":
-                    sendMessages(chatId, "shulardan foydalaning\n" +
-                            "/Menular_bilan_tanishish - yangi menu qo'shish\n" +
-                            "/Savatcha - menular ro'yhatini ko'rish\n" +
-                            "/Menudan_olish - menularni raqami bo'yicha o'chirish\n" +
-                            "/other - admindan yordam");
+                    sendMessages(chatId, "shulardan foydalaning\n" + "/Menular_bilan_tanishish - yangi menu qo'shish\n" + "/Savatcha - menular ro'yhatini ko'rish\n" + "/Menudan_olish - menularni raqami bo'yicha o'chirish\n" + "/other - admindan yordam");
                     break;
                 case "Menu":
                 case "/Menular_bilan_tanishish":
@@ -336,8 +356,7 @@ public class ClientBot extends TelegramLongPollingBot {
         StringBuilder menuText = new StringBuilder("Ovqatlar ro'yxati:\n\n");
 
         for (Menu menu : activeMenus) {
-            menuText.append(menu.getId()).append(". ").append(menu.getFood_name())
-                    .append(" - ").append(menu.getFood_price()).append(" so'm\n");
+            menuText.append(menu.getId()).append(". ").append(menu.getFood_name()).append(" - ").append(menu.getFood_price()).append(" so'm\n");
         }
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
@@ -375,7 +394,7 @@ public class ClientBot extends TelegramLongPollingBot {
 
         for (Menu menu : activeMenus) {
             List<InlineKeyboardButton> row = new ArrayList<>();
-            row.add(createButton( menu.getId()+ ". "+ menu.getFood_name() + "  -  " + menu.getFood_price()+ " so'm" , "FOOD_" + menu.getId()));
+            row.add(createButton(menu.getId() + ". " + menu.getFood_name() + "  -  " + menu.getFood_price() + " so'm", "FOOD_" + menu.getId()));
             rows.add(row);
         }
 
@@ -414,26 +433,30 @@ public class ClientBot extends TelegramLongPollingBot {
             return;
         }
 
+        Client client = clientRepository.findById(chatId).orElse(null);
+        if (client == null || client.getName() == null || client.getPhoneNumber() == null) {
+            sendMessage(chatId, "❗ Iltimos, oldin ro‘yxatdan o‘ting! \n/start tugmasini bosib ismingiz va telefon raqamingizni kiriting.");
+            return;
+        }
+
         long userId = getOrCreateUserId(chatId);
-        StringBuilder confirmedOrderDetails = new StringBuilder(" ");
+        StringBuilder confirmedOrderDetails = new StringBuilder();
         confirmedOrderDetails.append("🆔: ").append(userId).append("\n");
 
-        int totalAmount = 0;
+        double totalAmount = 0;
+        String userName = client.getName();
+        String userPhone = client.getPhoneNumber();
 
-        Client client = clientRepository.findById(chatId).orElse(null);
-        String userName = (client != null && client.getName() != null) ? client.getName() : "Foydalanuvchi";
-        String userPhone = (client != null && client.getPhoneNumber() != null) ? client.getPhoneNumber() : "Telefon raqami kiritilmagan";
-
-        confirmedOrderDetails.append("🛒 *Buyurtmangiz tasdiqlandi!* \n\n");
         confirmedOrderDetails.append("👤 *Ism:* ").append(userName).append("\n");
         confirmedOrderDetails.append("📞 *Telefon:* ").append(userPhone).append("\n");
+
         if (client.getDeliveryAddress() != null) {
             confirmedOrderDetails.append("📍 Manzil: ").append(client.getDeliveryAddress()).append("\n\n");
         } else {
             confirmedOrderDetails.append("⏳ Olib ketish vaqti: ").append(client.getPickupTime()).append("\n\n");
         }
-        confirmedOrderDetails.append("🍽 *Buyurtma tafsilotlari:* \n");
 
+        confirmedOrderDetails.append("🍽 *Buyurtma tafsilotlari:* \n");
         for (Map.Entry<Long, Integer> entry : userOrders.entrySet()) {
             long foodId = entry.getKey();
             int quantity = entry.getValue();
@@ -442,47 +465,80 @@ public class ClientBot extends TelegramLongPollingBot {
             if (menu != null && quantity > 0) {
                 double itemTotal = menu.getFood_price() * quantity;
                 totalAmount += itemTotal;
-
-                confirmedOrderDetails.append("🍔 ").append(menu.getFood_name()).append(" x ").append(quantity)
+                confirmedOrderDetails.append("🍔 ").append(menu.getFood_name())
+                        .append(" x ").append(quantity)
                         .append(" = ").append(itemTotal).append(" so'm\n");
             }
         }
 
-//        int chegirma = totalAmount/10;
-        confirmedOrderDetails.append(String.format("\n💰 Jami narx: %d so'm\n", totalAmount));
-//                .append(String.format("Botdan buyurtma qilganingiz uchun chegirma sifatida %d so'm chegirmani qo'lga kiritdingiz\n", chegirma))
-//                .append(String.format("\n💰 Yakuniy narx: %d so'm", totalAmount - chegirma));
+        confirmedOrderDetails.append(String.format("\n💰 Jami narx: %.2f so'm\n", totalAmount));
 
-        sendMessage(chatId, "✅ Buyurtmangiz tasdiqlandi!\n\n" + confirmedOrderDetails.toString());
+        // ✅ Buyurtmani ORDERED statusida bazaga saqlaymiz
+        Orders order = new Orders(client, userName, userPhone, confirmedOrderDetails.toString(), totalAmount, LocalDateTime.now(), OrderStatus.ORDERED);
+        Orders savedOrder = ordersRepository.save(order);
 
-        String groupMessage = confirmedOrderDetails.toString();
-        sendOrderToGroup(groupMessage);
+        System.out.println("✅ Buyurtma saqlandi! ID: " + savedOrder.getId());
 
+        // ✅ Buyurtma tarixini ORDERED statusida saqlaymiz
+        OrderHistory history = new OrderHistory(client, savedOrder.getId(), confirmedOrderDetails.toString(), OrderStatus.ORDERED);
+        orderHistoryRepository.save(history);
+
+        // ✅ Mijozga habar yuboramiz
+        sendMessage(chatId, "✅ Buyurtmangiz oshxonachilarga yetkazildi!\n\n" + confirmedOrderDetails.toString());
+
+        // ✅ Gruppaga habar yuboramiz
+        sendOrderToGroup(confirmedOrderDetails.toString(), chatId);
+
+        // ✅ Buyurtmalarni tozalash
         orders.remove(chatId);
 
-        try {
-            // 3 soniya kutish (3000 millisekund)
-            Thread.sleep(3000);
-        } catch (InterruptedException e) {
-            sendMessage(chatId,"Yana buyurtma berishni hohlasangiz tugmalardan foydalaning");
-            Thread.currentThread().interrupt(); // Agar thread uzilgan bo'lsa, statusni tiklash
-        }
-        sendMessage(chatId,"Yana buyurtma berishni hohlasangiz tugmalardan foydalaning");
+        sendMessage(chatId, "Yana buyurtma berishni hohlasangiz tugmalardan foydalaning");
     }
 
-    private void sendOrderToGroup(String orderDetails) {
-        String groupId = "-1002288347120";
-        SendMessage message = new SendMessage();
-        message.setChatId(groupId);
 
-        message.setText("📦 Yangi buyurtma:\n\n" + orderDetails.trim());
 
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
+
+    private void sendOrderToGroup(String orderDetails, Long chatId) {
+        String groupIdd = "-1002332417212";
+
+        Long orderId = extractOrderId(orderDetails);
+        if (orderId == null) {
+            sendMessage(chatId, "❌ Xatolik: Buyurtma ID aniqlanmadi.");
+            return;
         }
+
+        Orders order = ordersRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
+            return;
+        }
+
+        Client client = clientRepository.findByChatId(chatId).orElse(null);
+        String userName = (client != null) ? client.getName() : "Noma'lum";
+        String userPhone = (client != null) ? client.getPhoneNumber() : "Noma'lum";
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        List<InlineKeyboardButton> row = new ArrayList<>();
+        row.add(createButton("✅ Sotildi", "MARK_SOLD_" + orderId));
+        row.add(createButton("❌ Bekor qilindi", "MARK_CANCELED_" + orderId + "_" + userName + "_" + userPhone));
+        rows.add(row);
+        markup.setKeyboard(rows);
+
+        sendMessageWithMarkup(groupIdd, "📦 **Yangi buyurtma!**\n\n" + orderDetails, markup);
     }
+
+
+    private Long extractOrderId(String orderDetails) {
+        Pattern pattern = Pattern.compile("🆔: (\\d+)");
+        Matcher matcher = pattern.matcher(orderDetails);
+        if (matcher.find()) {
+            return Long.parseLong(matcher.group(1));
+        }
+        return null;
+    }
+
 
     private void showOrderDetails(long chatId, long foodId, int messageId, int quantity) {
 
@@ -492,11 +548,7 @@ public class ClientBot extends TelegramLongPollingBot {
             return;
         }
 
-        String details = "Tanlangan mahsulot:\n" +
-                "ID: " + menu.getId() + "\n" +
-                "Nomi: " + menu.getFood_name() + "\n" +
-                "Narxi: " + (menu.getFood_price() * quantity) + " so'm\n" +
-                "Miqdor: " + quantity;
+        String details = "Tanlangan mahsulot:\n" + "ID: " + menu.getId() + "\n" + "Nomi: " + menu.getFood_name() + "\n" + "Narxi: " + (menu.getFood_price() * quantity) + " so'm\n" + "Miqdor: " + quantity;
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -543,7 +595,7 @@ public class ClientBot extends TelegramLongPollingBot {
         long foodId = currentOrder.get(chatId);
         Map<Long, Integer> userBasket = basket.getOrDefault(chatId, new HashMap<>());
 
-        int quantity = userBasket.getOrDefault(foodId, 0)+1;
+        int quantity = userBasket.getOrDefault(foodId, 0) + 1;
         userBasket.put(foodId, quantity);
 
         // Savatchani yangilash
@@ -573,11 +625,7 @@ public class ClientBot extends TelegramLongPollingBot {
                 double itemTotal = menu.getFood_price() * quantity;
                 totalAmount += itemTotal;
 
-                basketDetails.append("ID: ").append(menu.getId())
-                        .append("\nNomi: ").append(menu.getFood_name())
-                        .append("\nNarxi: ").append(menu.getFood_price()).append(" so'm")
-                        .append("\nMiqdor: ").append(quantity)
-                        .append("\nJami: ").append(itemTotal).append(" so'm\n\n");
+                basketDetails.append("ID: ").append(menu.getId()).append("\nNomi: ").append(menu.getFood_name()).append("\nNarxi: ").append(menu.getFood_price()).append(" so'm").append("\nMiqdor: ").append(quantity).append("\nJami: ").append(itemTotal).append(" so'm\n\n");
             }
         }
 
@@ -630,12 +678,9 @@ public class ClientBot extends TelegramLongPollingBot {
                 double itemTotal = menu.getFood_price() * quantity;
                 totalAmount += itemTotal;
 
-                basketDetails.append("🍔 ").append(menu.getFood_name())
-                        .append("\nMiqdor: ").append(quantity)
-                        .append("\nJami: ").append(itemTotal).append(" so'm\n\n");
+                basketDetails.append("🍔 ").append(menu.getFood_name()).append("\nMiqdor: ").append(quantity).append("\nJami: ").append(itemTotal).append(" so'm\n\n");
             }
         }
-
         basketDetails.append("💰 Umumiy summa: ").append(totalAmount).append(" so'm");
 
         SendMessage message = new SendMessage();
@@ -672,13 +717,354 @@ public class ClientBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+    private void handleCancelOrder(String callbackData, long chatId) {
+        String[] data = callbackData.split("_");
+        if (data.length < 3) {
+            sendMessage(chatId, "❌ Xatolik: Callback ma'lumotlari noto‘g‘ri.");
+            return;
+        }
+
+
+        long orderId;
+        try {
+            orderId = Long.parseLong(data[2]);
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "❌ Xatolik: Noto‘g‘ri buyurtma ID.");
+            return;
+        }
+
+        Orders order = ordersRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
+            return;
+        }
+
+        if (order.getStatus() == OrderStatus.CANCELED) {
+            sendMessage(chatId, "⚠️ Bu buyurtma avval bekor qilingan!");
+            return;
+        }
+
+        // ✅ Agar buyurtma allaqachon SOLD bo‘lsa, bekor qilib bo‘lmaydi!
+        if (order.getStatus() == OrderStatus.SOLD) {
+            sendMessage(chatId, "⚠️ Bu buyurtma allaqachon sotilgan, uni bekor qilib bo‘lmaydi!");
+            return;
+        }
+
+        // ✅ Takrorlanishni oldini olish uchun mahsulot ro‘yxatini ajratamiz
+        String orderItems = extractOrderItems(order.getOrderDetails());
+
+        // ✅ Buyurtmani CANCELED deb belgilaymiz
+        order.setStatus(OrderStatus.CANCELED);
+        ordersRepository.save(order);
+
+        // ✅ Buyurtma tarixini yangilaymiz
+        OrderHistory orderHistory = orderHistoryRepository.findByOrderId(orderId);
+        if (orderHistory != null) {
+            orderHistory.updateStatus(OrderStatus.CANCELED);
+            orderHistoryRepository.save(orderHistory);
+        } else {
+            OrderHistory newHistory = new OrderHistory(order.getClient(), order.getId(), order.getOrderDetails(), OrderStatus.CANCELED);
+            orderHistoryRepository.save(newHistory);
+        }
+
+        // ✅ Admin va oshxona uchun xabar
+        String cancelMessage = "❌ Buyurtma bekor qilindi!\n\n" +
+                "🆔 Buyurtma ID: " + orderId + "\n" +
+                "👤 Foydalanuvchi: " + order.getUserName() + "\n" +
+                "📞 Telefon: " + order.getUserPhone() + "\n\n" +
+                "🍽 *Buyurtma tafsilotlari:* \n" + orderItems + "\n\n" +
+                "💰 Jami narx: " + order.getTotalPrice() + " so'm\n\n" +
+                "🔴 **Admin bilan bog‘laning!**";
+
+        sendMessage(groupId, cancelMessage);
+    }
+
+    // ✅ Faqat buyurtmadagi mahsulotlarni ajratib olish uchun yordamchi metod
+    private String extractOrderItems(String orderDetails) {
+        StringBuilder items = new StringBuilder();
+        String[] lines = orderDetails.split("\n");
+        for (String line : lines) {
+            if (line.startsWith("🍔") || line.startsWith("🥗") || line.startsWith("🍕")) { // Faqat mahsulot qatorlarini olish
+                items.append(line).append("\n");
+            }
+        }
+        return items.toString().trim();
+    }
+
+
+    private void handleSoldOrder(String callbackData, long chatId) {
+        long orderId = Long.parseLong(callbackData.split("_")[2]);
+        Orders order = ordersRepository.findById(orderId).orElse(null);
+
+        if (order == null) {
+            sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
+            return;
+        }
+
+        // ✅ Faqat shu orderId uchun statusni tekshiramiz
+        if (order.getStatus() == OrderStatus.SOLD) {
+            sendMessage(chatId, "⚠️ Bu buyurtma allaqachon sotilgan!");
+            return;
+        }
+
+        // ✅ Buyurtmani SOLD deb belgilaymiz
+        order.setStatus(OrderStatus.SOLD);
+        ordersRepository.save(order);
+
+        // ✅ Buyurtma tarixini yangilaymiz
+        OrderHistory orderHistory = orderHistoryRepository.findByOrderId(orderId);
+        if (orderHistory != null) {
+            orderHistory.updateStatus(OrderStatus.SOLD);
+            orderHistoryRepository.save(orderHistory);
+        } else {
+            OrderHistory newHistory = new OrderHistory(order.getClient(), order.getId(), order.getOrderDetails(), OrderStatus.SOLD);
+            orderHistoryRepository.save(newHistory);
+        }
+
+        sendMessage(groupId, "✅ Buyurtma sotildi! ID: " + orderId);
+    }
+
+//    private void handleSoldOrder(String callbackData, long chatId) {
+//        long orderId = Long.parseLong(callbackData.split("_")[2]);
+//        Orders order = ordersRepository.findById(orderId).orElse(null);
+//
+//        if (order == null) {
+//            sendMessage(chatId, "❌ Buyurtma topilmadi.");
+//            return;
+//        }
+//
+//        chatId = order.getChatId(); // Mijozning chat ID sini olamiz
+//
+//        // ✅ Mijozning barcha "ORDERED" statusdagi buyurtmalarini olish
+//        List<Orders> clientOrders = ordersRepository.findByChatIdAndStatus(chatId, OrderStatus.ORDERED);
+//        if (clientOrders.isEmpty()) {
+//            sendMessage(groupId, "❌ Mijozda tasdiqlanmagan buyurtmalar yo‘q.");
+//            return;
+//        }
+//
+//        // ✅ Sotilgan buyurtmalar ro‘yxatini yig‘ish
+//        StringBuilder soldOrdersList = new StringBuilder("✅ Quyidagi buyurtmalar sotildi:\n\n");
+//
+//        for (Orders clientOrder : clientOrders) {
+//            clientOrder.setStatus(OrderStatus.SOLD);
+//            ordersRepository.save(clientOrder);
+//
+//            soldOrdersList.append("🆔 Buyurtmachi IDsi: ").append(clientOrder.getOrderDetails()).append("\n\n");
+//
+//            System.out.println("✅ Buyurtma SOLD statusiga o‘tdi: ID = " + clientOrder.getId());
+//        }
+//
+//        sendMessage(groupId, soldOrdersList.toString()); // 🔹 Guruhga sotilgan buyurtmalarni chiqarish
+//    }
+//
+//
+//    private void handleCancelOrder(String callbackData, long chatId) {
+//        System.out.println("🚨 Bekor qilish tugmasi bosildi: " + callbackData);
+//
+//        // 1️⃣ Callback ma’lumotlarini ajratib olish
+//        String[] data = callbackData.split("_");
+//        if (data.length < 3) {
+//            sendMessage(chatId, "❌ Xatolik: Callback ma'lumotlari noto‘g‘ri.");
+//            return;
+//        }
+//
+//        // 2️⃣ Order ID olish
+//        long orderId;
+//        try {
+//            orderId = Long.parseLong(data[2]);
+//        } catch (NumberFormatException e) {
+//            sendMessage(chatId, "❌ Xatolik: Noto‘g‘ri buyurtma ID.");
+//            return;
+//        }
+//
+//        // 3️⃣ Buyurtmani topish
+//        Orders order = ordersRepository.findById(orderId).orElse(null);
+//        if (order == null) {
+//            System.out.println("❌ Xatolik: Buyurtma topilmadi! ID: " + orderId);
+//            sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
+//            return;
+//        }
+//        // 4️⃣ Foydalanuvchi ma’lumotlarini olish
+//        String userName = order.getUserName() != null ? order.getUserName() : "Noma'lum";
+//        String userPhone = order.getUserPhone() != null ? order.getUserPhone() : "Noma'lum";
+//        String orderDetails = order.getOrderDetails();
+//
+//
+//        String cancelMassage ="✅ Buyurtma CANCELED qilindi!\n\n"+
+//                "✅ Buyurtma topildi! ID: " + orderId + "\n" +
+//                "👤 Foydalanuvchi ismi: " + userName + "\n" +
+//                "📞 Telefon raqami: " + userPhone + "\n" +
+//                "🍽 *Buyurtma tafsilotlari:* \n" + orderDetails + "\n\n" +
+//                "🔴 **Admin bilan bog‘laning!**";
+//
+////        System.out.println(
+////                "✅ Buyurtma topildi! ID: " + orderId +
+////                "👤 Foydalanuvchi ismi: " + userName +
+////                "📞 Telefon raqami: " + userPhone
+////
+////        );
+//
+//        System.out.println("👤 Foydalanuvchi ismi: " + userName);
+//        System.out.println("📞 Telefon raqami: " + userPhone);
+//
+//        // 5️⃣ Buyurtmani "CANCELED" statusiga o‘tkazish
+//        if (order.getStatus() != OrderStatus.CANCELED) {
+//            order.setStatus(OrderStatus.CANCELED);
+//            ordersRepository.save(order);
+//            System.out.println("✅ Buyurtma CANCELED qilindi! ID: " + orderId);
+//        } else {
+//            System.out.println("⚠️ Buyurtma allaqachon bekor qilingan! ID: " + orderId);
+//        }
+//
+//        // 6️⃣ Hisobot botiga xabar yuborish
+////        String messageText = "⚠️ **Buyurtma bekor qilindi!**\n\n" +
+////                "🆔 Buyurtma ID: " + orderId + "\n" +
+////                "👤 **Ism:** " + userName + "\n" +
+////                "📞 **Telefon:** " + userPhone + "\n" +
+////                "🍽 *Buyurtma tafsilotlari:* \n" + orderDetails + "\n\n" +
+////                "🔴 **Admin bilan bog‘laning!**";
+//
+//        sendMessage(groupId, cancelMassage);  // ✅ Hisobot botining guruhiga yuborish
+//
+//        // 7️⃣ Oshxona chatiga ham xabar yuborish
+////        sendMessage(chatId, "✅ Buyurtma bekor qilindi va hisobot botiga yuborildi.");
+//
+//        // ✅ Console log
+//        System.out.println("📩 Hisobot botiga xabar yuborildi!");
+//    }
+
+    private void sendMessageToHisobot(String messageText) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(HISOBOT_Group_CHAT_ID)); // ✅ Hisobot bot guruhining chat ID sini ishlatamiz
+        message.setText(messageText);
+
+        try {
+            execute(message); // ✅ Xabar yuborish
+            System.out.println("✅ Hisobot botga xabar yuborildi!");
+        } catch (TelegramApiException e) {
+            System.out.println("❌ Xatolik: Hisobot botga xabar yuborilmadi!");
+            e.printStackTrace();
+        }
+    }
+
+
+//    // ✅ Hisobot botiga xabar yuborish
+//    private void sendMessageToBot(String botToken, String chatId, String messageText) {
+//        // ✅ Tokenni parametr sifatida ishlatish
+//        botToken = "7594485855:AAGcoc9PlWKLqMBtf7NTUJU6lFf6MJl8mfs";
+//        String url = "https://api.telegram.org/bot" + botToken + "/sendMessage";
+//
+//        RestTemplate restTemplate = new RestTemplate();
+//        Map<String, String> requestBody = new HashMap<>();
+//        requestBody.put("chat_id", chatId);
+//        requestBody.put("text", messageText);
+//        requestBody.put("parse_mode", "Markdown");
+//
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.setContentType(MediaType.APPLICATION_JSON);
+//
+//        HttpEntity<Map<String, String>> request = new HttpEntity<>(requestBody, headers);
+//
+//        try {
+//            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+//            System.out.println("✅ Xabar yuborildi! Javob: " + response.getBody());
+//        } catch (Exception e) {
+//            System.out.println("❌ Xatolik: Xabar yuborilmadi!");
+//            e.printStackTrace();
+//        }
+//    }
+
+
 
     private void handleCallbackQuery(Update update) {
         String callbackData = update.getCallbackQuery().getData();
         long chatId = update.getCallbackQuery().getMessage().getChatId();
         int messageId = update.getCallbackQuery().getMessage().getMessageId();
+        if (callbackData.startsWith("MARK_CANCELED_")) {
+            handleCancelOrder(callbackData, chatId);
+        } else if (callbackData.startsWith("MARK_SOLD_")) {
+            handleSoldOrder(callbackData, chatId);
+        }
 
-        if (callbackData.startsWith("FOOD_")) {
+//        if (callbackData.startsWith("MARK_CANCELED|")) {
+//            String[] data = callbackData.split("\\|"); // "|" maxsus belgi, shuning uchun "\\|" yoziladi
+//
+//            if (data.length < 2) { // Agar faqat orderId kelsa
+//                sendMessage(chatId, "❌ Xatolik: Callback ma'lumotlari noto‘g‘ri.");
+//                return;
+//            }
+//
+//            long orderId = Long.parseLong(data[1]);
+//            Orders order = ordersRepository.findById(orderId).orElse(null);
+//
+//            if (order == null) {
+//                sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
+//                return;
+//            }
+//
+//            // ✅ Buyurtmani "CANCELED" statusiga o‘tkazish
+//            order.setStatus(OrderStatus.CANCELED);
+//            ordersRepository.save(order);
+//
+//            // ✅ Foydalanuvchi ma'lumotlarini olish
+//            String userName = order.getUserName();
+//            String userPhone = order.getUserPhone();
+//            String orderDetails = order.getOrderDetails();
+//
+//            if (userName == null || userPhone == null) {
+//                sendMessage(chatId, "❌ Xatolik: Foydalanuvchi ma'lumotlari topilmadi.");
+//                return;
+//            }
+//
+//            // ✅ Hisobot botiga buyurtmani yuborish
+//            sendMessage(HISOBOT_BOT_CHAT_ID, "⚠️ **Buyurtma bekor qilindi!**\n\n" +
+//                    "🆔 Buyurtma ID: " + orderId + "\n" +
+//                    "👤 **Ism:** " + userName + "\n" +
+//                    "📞 **Telefon:** " + userPhone + "\n" +
+//                    "🍽 *Buyurtma tafsilotlari:* \n" + orderDetails + "\n\n" +
+//                    "🔴 **Admin bilan bog‘laning!**");
+//
+//            // ✅ Oshxona chatiga xabar berish
+//            sendMessage(chatId, "✅ Buyurtma bekor qilindi va admin botiga yuborildi.");
+//        }
+
+
+//        if (update.hasCallbackQuery()) {
+//            if (callbackData.startsWith("MARK_SOLD_")) {
+//                long orderId = Long.parseLong(callbackData.split("_")[2]);
+//                System.out.println("🛠 Sotilgan buyurtma ID: " + orderId);
+//
+//                Orders order = ordersRepository.findById(orderId).orElse(null);
+//                if (order == null) {
+//                    sendMessage(chatId, "❌ Buyurtma topilmadi.");
+//                    return;
+//                }
+//
+//                chatId = order.getChatId(); // Mijozning chat ID sini olamiz
+//
+//                // ✅ Mijozning barcha "ORDERED" statusdagi buyurtmalarini olish
+//                List<Orders> clientOrders = ordersRepository.findByChatIdAndStatus(chatId, OrderStatus.ORDERED);
+//                if (clientOrders.isEmpty()) {
+//                    sendMessage(chatId, "❌ Mijozda tasdiqlanmagan buyurtmalar yo‘q.");
+//                    return;
+//                }
+//
+//                // ✅ Sotilgan buyurtmalar ro‘yxatini yig‘ish
+//                StringBuilder soldOrdersList = new StringBuilder("✅ Quyidagi buyurtmalar sotildi:\n\n");
+//
+//                for (Orders clientOrder : clientOrders) {
+//                    clientOrder.setStatus(OrderStatus.SOLD);
+//                    ordersRepository.save(clientOrder);
+//
+//                    System.out.println("✅ Buyurtma SOLD statusiga o‘tdi: ID = " + clientOrder.getId());
+//                }
+//
+//                sendMessage(groupId, soldOrdersList.toString()); // 🔹 Guruhga sotilgan buyurtmalarni chiqarish
+//            }
+//        }
+
+
+        else if (callbackData.startsWith("FOOD_")) {
             long foodId = Long.parseLong(callbackData.split("_")[1]);
             currentOrder.put(chatId, foodId);
             showOrderDetails(chatId, foodId, messageId, 0);
@@ -691,15 +1077,13 @@ public class ClientBot extends TelegramLongPollingBot {
         } else if (callbackData.startsWith("ADD_TO_BASKET_")) {
             finalizeOrder(chatId);
 
-        }else if (callbackData.equals("CONFIRM_ORDER")) {
+        } else if (callbackData.equals("CONFIRM_ORDER")) {
             // Eski manzil va vaqtni tozalash
             Client client = clientRepository.findById(chatId).orElse(null);
             assert client != null;
             client.setPickupTime(null);
             clientRepository.save(client);
-            sendInlineKeyboard(chatId, "Buyurtmani qanday olmoqchisiz? Dastavka keyinroq qo'shiladi)",
-                    new String[]{"🏠 Borib olib ketish"},
-                    new String[]{"PICKUP"});
+            sendInlineKeyboard(chatId, "Buyurtmani qanday olmoqchisiz? Dastavka keyinroq qo'shiladi)", new String[]{"🏠 Borib olib ketish"}, new String[]{"PICKUP"});
 //        }else if (callbackData.equals("CONFIRM_ORDER")) {
 //            // Eski manzil va vaqtni tozalash
 //            Client client = clientRepository.findById(chatId).orElse(null);
@@ -713,9 +1097,7 @@ public class ClientBot extends TelegramLongPollingBot {
 //            sendMessage(chatId, "Manzilni kiriing iltimos: ");
 //            awaitingAddress.put(chatId, true);
         } else if (callbackData.equals("PICKUP")) {
-            sendInlineKeyboard(chatId, "Qachon olib ketmoqchisiz?",
-                    new String[]{"15 daqiqa", "30 daqiqa", "1 soat", "Vaqtni o‘zingiz kiriting"},
-                    new String[]{"15daqiqa", "30daqiqa", "1soat", "CUSTOM_TIME"});
+            sendInlineKeyboard(chatId, "Qachon olib ketmoqchisiz?", new String[]{"15 daqiqa", "30 daqiqa", "1 soat", "Vaqtni o‘zingiz kiriting"}, new String[]{"15daqiqa", "30daqiqa", "1soat", "CUSTOM_TIME"});
         } else if (callbackData.equals("CUSTOM_TIME")) {
             sendMessages(chatId, "Iltimos, necha daqiqadan keyin olib ketishingizni yozing: (daqiqa yoki soat ???)");
             awaitingPickupTime.put(chatId, true);
@@ -734,17 +1116,17 @@ public class ClientBot extends TelegramLongPollingBot {
             client.setPickupTime(callbackData);
             clientRepository.save(client);
             confirmOrder(chatId);
-        }  else if(callbackData.equals("CLEAR_BASKET")){
+        } else if (callbackData.equals("CLEAR_BASKET")) {
             clearBasket(chatId);
         } else if (callbackData.equals("SHOW_MENU")) {
             showMenus(chatId);
         } else if (callbackData.startsWith("VIEW_BASKET")) {
             showBasket(chatId);
-        } else if(callbackData.equals("BACK_TO_MAIN_MENU")){
+        } else if (callbackData.equals("BACK_TO_MAIN_MENU")) {
             sendMainMenu(chatId);
-        } else if(callbackData.equals("SHOW_ORDERS_MENU")){
+        } else if (callbackData.equals("SHOW_ORDERS_MENU")) {
             showMenu(chatId);
-        } else if(callbackData.equals("UPDATE_BASKET")){
+        } else if (callbackData.equals("UPDATE_BASKET")) {
             updateBasket(chatId);
         } else if (callbackData.equals("RETURN_BACK_TO_SHOW_MENU")) {
             showMenus(chatId); // Menyuga qaytish
@@ -756,6 +1138,20 @@ public class ClientBot extends TelegramLongPollingBot {
         button.setText(text);
         button.setCallbackData(callbackData);
         return button;
+    }
+
+
+    private void sendMessageWithMarkup(String chatId, String text, InlineKeyboardMarkup markup) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+        message.setReplyMarkup(markup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
     }
 
 }

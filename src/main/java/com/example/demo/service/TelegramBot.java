@@ -2,6 +2,9 @@ package com.example.demo.service;
 
 import com.example.demo.config.BotConfig;
 import com.example.demo.model.*;
+import com.example.demo.repository.ClientRepository;
+import com.example.demo.repository.MenuRepository;
+import com.example.demo.repository.UserStateRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -18,14 +21,6 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.telegram.telegrambots.bots.TelegramLongPollingBot;
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-import org.telegram.telegrambots.meta.api.objects.Message;
-import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 
 @Component
@@ -218,8 +213,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                     handleState(chatId, userState, message);
                     break;
             }
-        }
-        else if (update.hasCallbackQuery()) {
+        } else if (update.hasCallbackQuery()) {
             handleCallback(update.getCallbackQuery().getData(), update.getCallbackQuery().getMessage().getChatId());
         }
     }
@@ -573,18 +567,18 @@ public class TelegramBot extends TelegramLongPollingBot {
             userStateRepository.delete(userState);
 
         } else if ("WAITING_FOR_UPDATE_ALL".equals(userState.getState())) {
-        Long id = Long.parseLong(userState.getFoodName());
-        Menu menu = menuRepository.findById(id).orElse(null);
-        if (menu != null) {
-            menu.setFood_name(message);
-            menuRepository.save(menu); // Save the updated name immediately
-            userState.setState("WAITING_FOR_NEW_PRICE_AFTER_NAME");
-            userStateRepository.save(userState);
-            sendMessage(chatId, "Ovqat nomi muvoffiqiyatli saqlandi endi uning narxini yuboring: ");
-        } else {
-            sendMessage(chatId, "Bu nom topilmadi.");
-            userStateRepository.delete(userState);
-        }
+            Long id = Long.parseLong(userState.getFoodName());
+            Menu menu = menuRepository.findById(id).orElse(null);
+            if (menu != null) {
+                menu.setFood_name(message);
+                menuRepository.save(menu); // Save the updated name immediately
+                userState.setState("WAITING_FOR_NEW_PRICE_AFTER_NAME");
+                userStateRepository.save(userState);
+                sendMessage(chatId, "Ovqat nomi muvoffiqiyatli saqlandi endi uning narxini yuboring: ");
+            } else {
+                sendMessage(chatId, "Bu nom topilmadi.");
+                userStateRepository.delete(userState);
+            }
         } else if ("WAITING_FOR_NEW_PRICE_AFTER_NAME".equals(userState.getState())) {
             Long id = Long.parseLong(userState.getFoodName());
             Menu menu = menuRepository.findById(id).orElse(null);

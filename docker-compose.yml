@@ -11,11 +11,11 @@ services:
     ports:
       - "8100:8100"
     environment:
-      - POSTGRES_DB=bot_db
+      - POSTGRES_DB=updating-oshxona-bot
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - SPRING_PROFILES_ACTIVE=production
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-b:5432/bot_db
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-b:5432/updating-oshxona-bot
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
       - SPRING_JPA_HIBERNATE_DDL_AUTO= update
@@ -35,7 +35,7 @@ services:
     ports:
       - "5433:5432"
     environment:
-      - POSTGRES_DB=bot_db
+      - POSTGRES_DB=updating-oshxona-bot
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
     volumes:

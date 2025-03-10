@@ -1,5 +1,6 @@
 package com.example.demo.config;
 
+import com.example.demo.service.SalesReportBot;
 import com.example.demo.service.TelegramBot;
 import com.example.demo.service.ClientBot;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,9 @@ public class BotInitializer {
     @Autowired
     private ClientBot clientBot;
 
+    @Autowired
+    private SalesReportBot salesReportBot;
+
     @EventListener({ContextRefreshedEvent.class})
     public void init() throws TelegramApiException {
         TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
@@ -26,6 +30,7 @@ public class BotInitializer {
         try {
             botsApi.registerBot(adminBot);
             botsApi.registerBot(clientBot);
+            botsApi.registerBot(salesReportBot);
             System.out.println("Both bots successfully registered!");
         } catch (TelegramApiException e) {
             e.printStackTrace();
