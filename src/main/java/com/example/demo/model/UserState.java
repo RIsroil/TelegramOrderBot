@@ -8,17 +8,12 @@ public class UserState {
 
     @Id
     private Long chatId;
-
-    private String state; // qaysi bosqichda (e.g., "WAITING_FOR_NAME", "WAITING_FOR_PRICE")
-
-    private String foodName; // vaqtinchalik menyu uchun ovqat nomi
-
-    public UserState() {
-    }
-
+    private String state;
+    private String foodName;
+    public UserState() {}
     public UserState(long chatId) {
         this.chatId = chatId;
-        this.state = null; // Default qiymat
+        this.state = null;
     }
 
     public Long getChatId() {

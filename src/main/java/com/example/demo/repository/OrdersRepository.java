@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -25,5 +26,6 @@ public interface OrdersRepository extends JpaRepository<Orders, Long> {
     List<Orders> findByOrderDetailsContaining(String productName);
     boolean existsByClientAndStatus(Client client, OrderStatus status);
 
-
+    @Query("SELECT MIN(o.orderDate) FROM Orders o WHERE o.status = 'ORDERED'")
+    LocalDate findEarliestOrderDate();
 }

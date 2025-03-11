@@ -10,15 +10,11 @@ public class UserOrder {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
     private Long chatId;
     private LocalDateTime orderDate;
 
     @ElementCollection
-    private Map<Long, Integer> orderDetails; // foodId -> quantity
-
-    // Getter va Setterlar
-
+    private Map<Long, Integer> orderDetails;
 
     public Long getId() {
         return id;

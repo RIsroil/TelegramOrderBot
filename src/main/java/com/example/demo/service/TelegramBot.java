@@ -26,34 +26,6 @@ import java.util.List;
 @Component
 public class TelegramBot extends TelegramLongPollingBot {
 
-    @Autowired
-    private UserStateRepository userStateRepository;
-
-    @Autowired
-    private MenuRepository menuRepository;
-
-    @Autowired
-    private ClientRepository clientRepository;
-
-    final BotConfig config;
-
-    @Autowired
-    private ClientBot clientBot;
-
-    public TelegramBot(BotConfig config) {
-        this.config = config;
-
-        List<BotCommand> listofCommands = new ArrayList<>();
-        listofCommands.add(new BotCommand("/start", "botni boshlash"));
-        listofCommands.add(new BotCommand("/yordam", "yordam olish"));
-
-        try {
-            this.execute(new SetMyCommands(listofCommands, new BotCommandScopeDefault(), null));
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
-    }
-
     @Override
     public String getBotUsername() {
         return config.getBotName();
@@ -62,6 +34,34 @@ public class TelegramBot extends TelegramLongPollingBot {
     @Override
     public String getBotToken() {
         return config.getToken();
+    }
+
+    private final UserStateRepository userStateRepository;
+
+    private final MenuRepository menuRepository;
+
+    private final ClientRepository clientRepository;
+
+    private final BotConfig config;
+
+    private final ClientBot clientBot;
+
+    public TelegramBot(ClientBot clientBot,BotConfig config,UserStateRepository userStateRepository,MenuRepository menuRepository,ClientRepository clientRepository) {
+        this.config = config;
+        this.userStateRepository = userStateRepository;
+        this.menuRepository = menuRepository;
+        this.clientRepository = clientRepository;
+        this.clientBot = clientBot;
+
+        List<BotCommand> commands = new ArrayList<>();
+        commands.add(new BotCommand("/start", "botni boshlash"));
+        commands.add(new BotCommand("/yordam", "yordam olish"));
+
+        try {
+            this.execute(new SetMyCommands(commands, new BotCommandScopeDefault(), null));
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -158,8 +158,6 @@ public class TelegramBot extends TelegramLongPollingBot {
                         throw new RuntimeException(e);
                     }
                     break;
-//                    sendMessages(chatId, "Iltimos raqam yuboring, qaysi menuni yangilamoqchisiz.");
-
 
                 case "/Barchasini_tozalash":
                 case "Barchasini tozalash":
@@ -176,7 +174,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                     }
                     break;
 
-                case "12345": // 🔑 Parolni bazadan olish yaxshiroq
+                case "12345":
                     if ("WAITING_FOR_CLEAR_PASSWORD".equals(userState.getState())) {
                         resetMenu(chatId);
                         sendMessage(chatId, "✅ Barcha mahsulotlar o‘chirildi.");
@@ -230,14 +228,12 @@ public class TelegramBot extends TelegramLongPollingBot {
             menuMessage.append(menu.getId()).append(". ").append(menu.getFood_name())
                     .append(" - ").append(menu.getFood_price()).append(" so'm\n");
         }
-
         clientBot.broadcastMessageToClients(menuMessage.toString());
 
         sendMessage(chatId, "Menyu barcha mijozlarga muvaffaqiyatli yuborildi.");
     }
 
     private void sendMainMenu(long chatId) {
-
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
 
@@ -364,7 +360,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void showInactiveMenus(long chatId) {
-
         List<Menu> inactiveMenus = menuRepository.findByIsActive("Sotuvda yo'q");
         if (inactiveMenus.isEmpty()) {
             sendMessage(chatId, "Hozirda sotuvda yo'q mahsulotlar yo'q.");
@@ -407,7 +402,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void handleState(long chatId, UserState userState, String message) {
-
         switch (userState.getState()) {
             case "WAITING_FOR_MULTIPLE_ACTIVE_TO_INACTIVE":
                 if ("Orqaga".equalsIgnoreCase(message)) {
@@ -645,7 +639,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         keyboardMarkup.setResizeKeyboard(true);
         keyboardMarkup.setOneTimeKeyboard(false);
 
-        // 3 ta tugma qo'shish
         List<KeyboardRow> keyboardRows = new ArrayList<>();
         KeyboardRow row = new KeyboardRow();
         row.add("Nomni yangilash");
@@ -682,5 +675,4 @@ public class TelegramBot extends TelegramLongPollingBot {
             throw new RuntimeException(e);
         }
     }
-
 }

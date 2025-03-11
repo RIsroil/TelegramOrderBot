@@ -21,10 +21,7 @@ public class Menu {
 
     private String isActive;
 
-
-    public Menu() {
-
-    }
+    public Menu() {}
 
     public Long getId() {
         return id;

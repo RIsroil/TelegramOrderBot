@@ -14,14 +14,17 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 @Component
 public class BotInitializer {
 
-    @Autowired
-    private TelegramBot adminBot;
+    private final TelegramBot adminBot;
 
-    @Autowired
-    private ClientBot clientBot;
+    private final ClientBot clientBot;
 
-    @Autowired
-    private SalesReportBot salesReportBot;
+    private final SalesReportBot salesReportBot;
+
+    public BotInitializer(SalesReportBot salesReportBot,ClientBot clientBot,TelegramBot adminBot) {
+        this.salesReportBot = salesReportBot;
+        this.clientBot = clientBot;
+        this.adminBot = adminBot;
+    }
 
     @EventListener({ContextRefreshedEvent.class})
     public void init() throws TelegramApiException {
@@ -31,7 +34,7 @@ public class BotInitializer {
             botsApi.registerBot(adminBot);
             botsApi.registerBot(clientBot);
             botsApi.registerBot(salesReportBot);
-            System.out.println("Both bots successfully registered!");
+            System.out.println("Three bots successfully registered!");
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }

@@ -1,9 +1,10 @@
 package com.example.demo.service;
 
 import com.example.demo.config.HisobotBotConfig;
+import com.example.demo.model.OrderHistory;
 import com.example.demo.model.OrderStatus;
 import com.example.demo.model.Orders;
-import com.example.demo.repository.OrdersRepository;
+import com.example.demo.repository.OrderHistoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -33,7 +34,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
     private final Map<Long, LocalDate> userInputDates = new HashMap<>();
 
     @Autowired
-    private OrdersRepository ordersRepository;
+    private OrderHistoryRepository orderHistoryRepository;
 
     public SalesReportBot(HisobotBotConfig config) {
         this.config = config;
@@ -54,13 +55,11 @@ public class SalesReportBot extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().hasText()) {
             String message = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
-             // // Group Id sini olish
 
-        if (update.hasMessage() && update.getMessage().hasText()) {
-            chatId = update.getMessage().getChatId();
-            System.out.println("Hisobot ID: " + chatId);
-        }
-
+//        if (update.hasMessage() && update.getMessage().hasText()) {
+//            chatId = update.getMessage().getChatId();
+//            System.out.println("Hisobot ID: " + chatId);
+//        }
 
             if (userState.containsKey(chatId)) {
                 handleCustomDateSelection(chatId, message);
@@ -147,7 +146,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
         sendSalesReport(chatId, firstDayOfLastMonth, lastDayOfLastMonth);
     }
 
-
     private void showPreviousWeekReport(long chatId) {
         LocalDate today = LocalDate.now();
         LocalDate startOfLastWeek = today.minusWeeks(1).with(DayOfWeek.MONDAY);
@@ -199,19 +197,44 @@ public class SalesReportBot extends TelegramLongPollingBot {
     }
 
     private void sendSalesReport(long chatId, LocalDate from, LocalDate to) {
-        // ✅ Hisobotga faqat SOLD bo‘lgan buyurtmalarni olamiz
-        List<Orders> soldOrders = ordersRepository.findSoldOrdersBetweenDates(from.atStartOfDay(), to.atTime(23, 59, 59));
+        LocalDate today = LocalDate.now();
+        LocalDate threeMonthsAgo = today.minusMonths(3);
+
+        LocalDate botStartDate = orderHistoryRepository.findEarliestOrderDate();
+        if (botStartDate == null) {
+            sendMessage(chatId, "📊 Hali birorta ham buyurtma mavjud emas.");
+            return;
+        }
+
+        if (from.isBefore(threeMonthsAgo)) {
+            sendMessage(chatId, "⚠️ Hisobot faqat oxirgi 3 oylik ma'lumotlarni ko‘rsatadi.");
+            from = threeMonthsAgo;
+        }
+
+        if (from.isBefore(botStartDate)) {
+            sendMessage(chatId, "⚠️ Bot " + botStartDate + " dan boshlab ishlayapti.");
+            from = botStartDate;
+        }
+
+        List<OrderHistory> soldOrders = orderHistoryRepository.findByStatusAndOrderDateBetween(
+                OrderStatus.SOLD, from.atStartOfDay(), to.atTime(23, 59, 59));
+
+        System.out.println("🔍 Hisobot uchun so‘rov: " + from + " dan " + to + " gacha");
+        System.out.println("🔍 Topilgan SOLD buyurtmalar: " + soldOrders.size());
 
         if (soldOrders.isEmpty()) {
             sendMessage(chatId, "📊 Ushbu davrda sotilgan mahsulotlar yo‘q.");
             return;
         }
 
+        // ✅ Hisobotni chiqarish
         Map<String, Integer> productSales = new HashMap<>();
         double totalRevenue = 0;
+        StringBuilder report = new StringBuilder("📊 Hisobot: " + from + " dan " + to + " gacha\n\n");
+        report.append("🛒 **Sotilgan mahsulotlar:**\n");
 
-        for (Orders order : soldOrders) { // Faqat SOLD buyurtmalarni hisoblaymiz
-            totalRevenue += order.getTotalPrice();
+        for (OrderHistory order : soldOrders) {
+            totalRevenue += order.getTotalPrice(); // ✅ Endi `getTotalPrice()` ishlaydi!
 
             // ✅ Buyurtma tafsilotlarini ajratib olish
             String[] items = order.getOrderDetails().split("\n");
@@ -229,17 +252,15 @@ public class SalesReportBot extends TelegramLongPollingBot {
             }
         }
 
-        // ✅ Hisobotni to‘g‘ri formatda chiqaramiz
-        StringBuilder report = new StringBuilder("📊 Hisobot: " + from + " dan " + to + " gacha\n\n");
-        report.append("🛒 **Sotilgan mahsulotlar:**\n");
-
         for (Map.Entry<String, Integer> entry : productSales.entrySet()) {
             report.append(entry.getKey()).append(" - ").append(entry.getValue()).append(" ta\n");
         }
-        report.append(String.format("\n💰 **Umumiy summa:** %.2f so‘m", totalRevenue));
 
+        report.append(String.format("\n💰 **Umumiy summa:** %.2f so‘m", totalRevenue));
         sendMessage(chatId, report.toString());
     }
+
+
 
 
 
