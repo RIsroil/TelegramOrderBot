@@ -5,7 +5,6 @@ import com.example.demo.model.*;
 import com.example.demo.repository.ClientRepository;
 import com.example.demo.repository.MenuRepository;
 import com.example.demo.repository.UserStateRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
@@ -37,20 +36,15 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private final UserStateRepository userStateRepository;
-
     private final MenuRepository menuRepository;
-
-    private final ClientRepository clientRepository;
-
+//    private final ClientRepository clientRepository;
     private final BotConfig config;
-
     private final ClientBot clientBot;
-
     public TelegramBot(ClientBot clientBot,BotConfig config,UserStateRepository userStateRepository,MenuRepository menuRepository,ClientRepository clientRepository) {
         this.config = config;
         this.userStateRepository = userStateRepository;
         this.menuRepository = menuRepository;
-        this.clientRepository = clientRepository;
+//        this.clientRepository = clientRepository;
         this.clientBot = clientBot;
 
         List<BotCommand> commands = new ArrayList<>();
@@ -69,12 +63,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().hasText()) {
             String message = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
-            String text = update.getMessage().getText();
 
-            List<Client> clients = clientRepository.findAll();
-            for (Client client : clients) {
-                System.out.println("Mijoz chatId: " + client.getChatId());
-            }
             UserState userState = userStateRepository.findById(chatId).orElseGet(() -> {
                 UserState newState = new UserState();
                 newState.setChatId(chatId);
@@ -90,7 +79,6 @@ public class TelegramBot extends TelegramLongPollingBot {
 
                 case "/yordam":
                 case "yordam":
-
                     sendMessages(chatId, "shulardan foydalaning\n" +
                             "/Menu_kiritish - yangi menu qo'shish\n" +
                             "/Menular_bilan_tanishish - menular ro'yhatini ko'rish\n" +
@@ -205,7 +193,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                     break;
 
                 case "Ulashish":
-                    ulashishOrder(chatId);
+                    sendMenuToClients(chatId);
                     break;
                 default:
                     handleState(chatId, userState, message);
@@ -214,23 +202,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         } else if (update.hasCallbackQuery()) {
             handleCallback(update.getCallbackQuery().getData(), update.getCallbackQuery().getMessage().getChatId());
         }
-    }
-
-    private void ulashishOrder(long chatId) {
-        List<Menu> menus = menuRepository.findByIsActive("Sotilmoqda");
-        if (menus.isEmpty()) {
-            sendMessage(chatId, "Hozirda menyu bo'sh. Avval menyu qo'shing.");
-            return;
-        }
-
-        StringBuilder menuMessage = new StringBuilder("Bugungi menyu:\n");
-        for (Menu menu : menus) {
-            menuMessage.append(menu.getId()).append(". ").append(menu.getFood_name())
-                    .append(" - ").append(menu.getFood_price()).append(" so'm\n");
-        }
-        clientBot.broadcastMessageToClients(menuMessage.toString());
-
-        sendMessage(chatId, "Menyu barcha mijozlarga muvaffaqiyatli yuborildi.");
     }
 
     private void sendMainMenu(long chatId) {
@@ -255,26 +226,6 @@ public class TelegramBot extends TelegramLongPollingBot {
             execute(message);
         } catch (TelegramApiException e) {
             e.printStackTrace();
-        }
-    }
-
-    private void handleCallback(String callbackData, long chatId) {
-        switch (callbackData) {
-            case "VIEW_ACTIVE":
-                showActiveMenus(chatId);
-                break;
-
-            case "VIEW_INACTIVE":
-                showInactiveMenus(chatId);
-                break;
-
-            case "BACK_TO_MAIN":
-                sendMessage(chatId, "O'tkazish tugatildi! Chatdagi tugmalarda foydalanishingiz mumkin");
-                break;
-
-            default:
-                sendMessage(chatId, "Noma'lum amal.");
-                break;
         }
     }
 
@@ -401,6 +352,40 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    private void sendUpdateOptions(long chatId) {
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText("Nimani yangilashni hohlaysiz");
+
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setResizeKeyboard(true);
+        keyboardMarkup.setOneTimeKeyboard(false);
+
+        List<KeyboardRow> keyboardRows = new ArrayList<>();
+        KeyboardRow row = new KeyboardRow();
+        row.add("Nomni yangilash");
+        row.add("Narxni yangilash");
+        row.add("Hammasini yangilash");
+        keyboardRows.add(row);
+
+        keyboardMarkup.setKeyboard(keyboardRows);
+        sendMessage.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void handleCallback(String callbackData, long chatId) {
+        switch (callbackData) {
+            case "VIEW_ACTIVE" -> showActiveMenus(chatId);
+            case "VIEW_INACTIVE" -> showInactiveMenus(chatId);
+            case "BACK_TO_MAIN" -> sendMessage(chatId, "O'tkazish tugatildi! Chatdagi tugmalarda foydalanishingiz mumkin");
+            default -> sendMessage(chatId, "Noma'lum amal.");
+        }
+    }
     private void handleState(long chatId, UserState userState, String message) {
         switch (userState.getState()) {
             case "WAITING_FOR_MULTIPLE_ACTIVE_TO_INACTIVE":
@@ -591,7 +576,25 @@ public class TelegramBot extends TelegramLongPollingBot {
             userStateRepository.delete(userState);
         }
     }
+    private void resetMenu(long chatId) {
+        try {
+            menuRepository.deleteAll(); // Remove all menu items
+            sendMessage(chatId, "Ro'yxatdagi barcha malumotlar o'chirildi va u boshidan qo'shishga tayyor! ");
+        } catch (Exception e) {
+            sendMessage(chatId, "Boshidan boshlash muvoffaqiyatsizlikka uchradi. Iltimos boshidan harakat qilb ko'ring");
+        }
+    }
 
+    private void sendMessages(long chatId, String message) {
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText(message);
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
     private void sendMessage(long chatId, String textToSend) {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(String.valueOf(chatId));
@@ -630,49 +633,21 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
-    private void sendUpdateOptions(long chatId) {
-        SendMessage sendMessage = new SendMessage();
-        sendMessage.setChatId(String.valueOf(chatId));
-        sendMessage.setText("Nimani yangilashni hohlaysiz");
-
-        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
-        keyboardMarkup.setResizeKeyboard(true);
-        keyboardMarkup.setOneTimeKeyboard(false);
-
-        List<KeyboardRow> keyboardRows = new ArrayList<>();
-        KeyboardRow row = new KeyboardRow();
-        row.add("Nomni yangilash");
-        row.add("Narxni yangilash");
-        row.add("Hammasini yangilash");
-        keyboardRows.add(row);
-
-        keyboardMarkup.setKeyboard(keyboardRows);
-        sendMessage.setReplyMarkup(keyboardMarkup);
-
-        try {
-            execute(sendMessage);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
+    private void sendMenuToClients(long chatId) {
+        List<Menu> menus = menuRepository.findByIsActive("Sotilmoqda");
+        if (menus.isEmpty()) {
+            sendMessage(chatId, "Hozirda menyu bo'sh. Avval menyu qo'shing.");
+            return;
         }
+
+        StringBuilder menuMessage = new StringBuilder("Bugungi menyu:\n");
+        for (Menu menu : menus) {
+            menuMessage.append(menu.getId()).append(". ").append(menu.getFood_name())
+                    .append(" - ").append(menu.getFood_price()).append(" so'm\n");
+        }
+        clientBot.broadcastMessageToClients(menuMessage.toString());
+
+        sendMessage(chatId, "Menyu barcha mijozlarga muvaffaqiyatli yuborildi.");
     }
 
-    private void resetMenu(long chatId) {
-        try {
-            menuRepository.deleteAll(); // Remove all menu items
-            sendMessage(chatId, "Ro'yxatdagi barcha malumotlar o'chirildi va u boshidan qo'shishga tayyor! ");
-        } catch (Exception e) {
-            sendMessage(chatId, "Boshidan boshlash muvoffaqiyatsizlikka uchradi. Iltimos boshidan harakat qilb ko'ring");
-        }
-    }
-
-    private void sendMessages(long chatId, String message) {
-        SendMessage sendMessage = new SendMessage();
-        sendMessage.setChatId(String.valueOf(chatId));
-        sendMessage.setText(message);
-        try {
-            execute(sendMessage);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-    }
 }
