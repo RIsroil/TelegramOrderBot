@@ -26,14 +26,20 @@ import java.util.*;
 @Component
 public class ClientBot extends TelegramLongPollingBot {
 
+    @Override
+    public String getBotUsername() {
+        return config.getBotName();
+    }
+
+    @Override
+    public String getBotToken() {
+        return config.getToken();
+    }
+
     private final ClientBotConfig config;
-
     private final OrderHistoryRepository orderHistoryRepository;
-
     private final MenuRepository menuRepository;
-
     private final ClientRepository clientRepository;
-
     private static final long groupId = -1002332417212L;
 
     public ClientBot(OrderHistoryRepository orderHistoryRepository, ClientBotConfig config, MenuRepository menuRepository, ClientRepository clientRepository) {
@@ -60,15 +66,6 @@ public class ClientBot extends TelegramLongPollingBot {
     private final Map<Long, Boolean> awaitingAddress = new HashMap<>();
     private final Map<Long, Boolean> awaitingPickupTime = new HashMap<>();
 
-    @Override
-    public String getBotUsername() {
-        return config.getBotName();
-    }
-
-    @Override
-    public String getBotToken() {
-        return config.getToken();
-    }
 
     @Override
     public void onUpdateReceived(Update update) {
@@ -213,75 +210,6 @@ public class ClientBot extends TelegramLongPollingBot {
         }
     }
 
-    public void broadcastMessageToClients(String messageText) {
-        List<Client> clients = clientRepository.findAll();
-        for (Client client : clients) {
-            try {
-                SendMessage message = new SendMessage();
-                message.setChatId(String.valueOf(client.getChatId()));
-                message.setText(messageText);
-                execute(message);
-                System.out.println("Xabar yuborildi: " + client.getChatId());
-            } catch (TelegramApiException e) {
-                System.err.println("Xabar yuborishda xatolik yuz berdi: " + client.getChatId());
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void sendMessageWithPhoneRequest(long chatId, String text) {
-        KeyboardButton contactButton = new KeyboardButton();
-        contactButton.setText("📞 Telefon raqamni yuborish");
-        contactButton.setRequestContact(true);
-
-        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
-        replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
-
-        KeyboardRow row = new KeyboardRow();
-        row.add(contactButton);
-        replyKeyboardMarkup.setKeyboard(Collections.singletonList(row));
-
-        SendMessage sendMessage = new SendMessage();
-        sendMessage.setChatId(String.valueOf(chatId));
-        sendMessage.setText(text);
-        sendMessage.setReplyMarkup(replyKeyboardMarkup);
-
-        try {
-            execute(sendMessage);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void sendMessage(long chatId, String text) {
-        SendMessage message = new SendMessage();
-        message.setChatId(String.valueOf(chatId));
-        message.setText(text);
-        message.enableHtml(true);
-
-        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
-        keyboardMarkup.setResizeKeyboard(true); // Tugmalarni kichraytirish
-        keyboardMarkup.setOneTimeKeyboard(false); // Klaviatura ekranda qoladi
-        List<KeyboardRow> keyboardRows = new ArrayList<>();
-        KeyboardRow row1 = new KeyboardRow();
-
-        row1.add("Menu");
-        row1.add("Savatcha");
-        row1.add("Buyurtma berish");
-        keyboardRows.add(row1);
-
-        keyboardMarkup.setKeyboard(keyboardRows);
-        message.setReplyMarkup(keyboardMarkup);
-
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private void sendMainMenu(long chatId) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
@@ -305,7 +233,6 @@ public class ClientBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
-
     private void showMenus(long chatId) {
 
         List<Menu> activeMenus = menuRepository.findByIsActive("Sotilmoqda");
@@ -340,7 +267,6 @@ public class ClientBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
-
     private void showMenu(long chatId) {
         List<Menu> activeMenus = menuRepository.findByIsActive("Sotilmoqda");
         if (activeMenus.isEmpty()) {
@@ -372,11 +298,6 @@ public class ClientBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
-    }
-
-    private void clearBasket(long chatId) {
-        orders.remove(chatId);
-        sendMessage(chatId, "🗑️ Savatchangiz tozalandi.");
     }
 
     private void confirmOrder(long chatId) {
@@ -432,7 +353,142 @@ public class ClientBot extends TelegramLongPollingBot {
 
         orders.remove(chatId);
     }
+    private void showBasket(long chatId) {
+        Map<Long, Integer> userOrders = orders.get(chatId);
+        if (userOrders == null || userOrders.isEmpty()) {
+            sendMessage(chatId, "Savatchangiz bo'sh.");
+            return;
+        }
 
+        StringBuilder basketDetails = new StringBuilder("Savatchadagi buyurtmalar:\n");
+        int totalAmount = 0;
+
+        for (Map.Entry<Long, Integer> entry : userOrders.entrySet()) {
+            long foodId = entry.getKey();
+            int quantity = entry.getValue();
+            Menu menu = menuRepository.findById(foodId).orElse(null);
+
+            if (menu != null) {
+                double itemTotal = menu.getFood_price() * quantity;
+                totalAmount += itemTotal;
+
+                basketDetails.append("ID: ").append(menu.getId()).append("\nNomi: ").append(menu.getFood_name()).append("\nNarxi: ").append(menu.getFood_price()).append(" so'm").append("\nMiqdor: ").append(quantity).append("\nJami: ").append(itemTotal).append(" so'm\n\n");
+            }
+        }
+
+        basketDetails.append("Umumiy summa: ").append(totalAmount).append(" so'm");
+
+        SendMessage message = new SendMessage(String.valueOf(chatId), basketDetails.toString());
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        List<InlineKeyboardButton> row1 = new ArrayList<>();
+        row1.add(createButton("Savatchani tozalash", "CLEAR_BASKET"));
+        row1.add(createButton("Tasdiqlash", "CONFIRM_ORDER"));
+
+        List<InlineKeyboardButton> row2 = new ArrayList<>();
+        row2.add(createButton("Savatchani yangilash", "UPDATE_BASKET"));
+        row2.add(createButton("Orqaga", "SHOW_ORDERS_MENU"));
+
+        rows.add(row1);
+        rows.add(row2);
+
+        markup.setKeyboard(rows);
+        message.setReplyMarkup(markup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+
+    }
+    private void showOrderDetails(long chatId, long foodId, int messageId, int quantity) {
+        Menu menu = menuRepository.findById(foodId).orElse(null);
+        if (menu == null) {
+            sendMessage(chatId, "Ovqat topilmadi.");
+            return;
+        }
+
+        String details = "Tanlangan mahsulot:\n" + "ID: " + menu.getId() + "\n" + "Nomi: " + menu.getFood_name() + "\n" + "Narxi: " + (menu.getFood_price() * quantity) + " so'm\n" + "Miqdor: " + quantity;
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        List<InlineKeyboardButton> row1 = new ArrayList<>();
+        row1.add(createButton("+", "ADD_QUANTITY_" + foodId));
+        row1.add(createButton("-", "REMOVE_QUANTITY_" + foodId));
+
+        List<InlineKeyboardButton> row2 = new ArrayList<>();
+        row2.add(createButton("Savatga qaytish", "VIEW_BASKET" + foodId));
+        row2.add(createButton("Orqaga", "SHOW_ORDERS_MENU"));
+
+        rows.add(row1);
+        rows.add(row2);
+
+        markup.setKeyboard(rows);
+
+        EditMessageText editMessage = new EditMessageText();
+        editMessage.setChatId(String.valueOf(chatId));
+        editMessage.setMessageId(messageId);
+        editMessage.setText(details);
+        editMessage.setReplyMarkup(markup);
+
+        try {
+            execute(editMessage);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void updateOrder(long chatId, long foodId, int messageId, int delta) {
+        Map<Long, Integer> userOrders = orders.getOrDefault(chatId, new HashMap<>());
+        int currentQuantity = userOrders.getOrDefault(foodId, 0);
+        int newQuantity = Math.max(currentQuantity + delta, 0);
+
+        userOrders.put(foodId, newQuantity);
+        orders.put(chatId, userOrders);
+
+        showOrderDetails(chatId, foodId, messageId, newQuantity);
+    }
+    private void clearBasket(long chatId) {
+        orders.remove(chatId);
+        sendMessage(chatId, "🗑️ Savatchangiz tozalandi.");
+    }
+
+    private void handleSoldOrder(String callbackData, long chatId) {
+        String[] data = callbackData.split("_");
+        if (data.length < 4) {
+            sendMessage(chatId, "❌ Xatolik: Callback ma'lumotlari noto‘g‘ri.");
+            return;
+        }
+
+        long clientId = Long.parseLong(data[2]);
+        long orderIndex = Long.parseLong(data[3]);
+
+        Client client = clientRepository.findByChatId(clientId).orElse(null);
+        if (client == null) {
+            sendMessage(chatId, "❌ Xatolik: Mijoz topilmadi.");
+            return;
+        }
+
+        OrderHistory orderHistory = orderHistoryRepository.findByClientAndOrderIndex(client, orderIndex).orElse(null);
+        if (orderHistory == null) {
+            sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
+            return;
+        }
+
+        if (orderHistory.getStatus() == OrderStatus.SOLD) {
+            sendMessage(chatId, "⚠️ Bu buyurtma allaqachon sotilgan!");
+            return;
+        }
+
+        orderHistory.updateStatus(OrderStatus.SOLD);
+        orderHistoryRepository.save(orderHistory);
+
+        sendMessage(chatId, "Mijoz ID: " + client.getClientId() + "Ismi: "+ client.getName() +" \n✅" + orderIndex + " - Buyurtmasi sotildi");
+    }
     private void handleCancelOrder(String callbackData, long chatId) {
         if (!callbackData.startsWith("MARK_CANCELED_")) {
             sendMessage(chatId, "❌ Xatolik: Noto‘g‘ri callback formati.");
@@ -489,7 +545,6 @@ public class ClientBot extends TelegramLongPollingBot {
 
         sendMessage(groupId, cancelMessage);
     }
-
     private String extractOrderItems(String orderDetails) {
         StringBuilder items = new StringBuilder();
         String[] lines = orderDetails.split("\n");
@@ -499,39 +554,6 @@ public class ClientBot extends TelegramLongPollingBot {
             }
         }
         return items.toString().trim();
-    }
-
-    private void handleSoldOrder(String callbackData, long chatId) {
-        String[] data = callbackData.split("_");
-        if (data.length < 4) {
-            sendMessage(chatId, "❌ Xatolik: Callback ma'lumotlari noto‘g‘ri.");
-            return;
-        }
-
-        long clientId = Long.parseLong(data[2]);
-        long orderIndex = Long.parseLong(data[3]);
-
-        Client client = clientRepository.findByChatId(clientId).orElse(null);
-        if (client == null) {
-            sendMessage(chatId, "❌ Xatolik: Mijoz topilmadi.");
-            return;
-        }
-
-        OrderHistory orderHistory = orderHistoryRepository.findByClientAndOrderIndex(client, orderIndex).orElse(null);
-        if (orderHistory == null) {
-            sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
-            return;
-        }
-
-        if (orderHistory.getStatus() == OrderStatus.SOLD) {
-            sendMessage(chatId, "⚠️ Bu buyurtma allaqachon sotilgan!");
-            return;
-        }
-
-        orderHistory.updateStatus(OrderStatus.SOLD);
-        orderHistoryRepository.save(orderHistory);
-
-        sendMessage(chatId, "Mijoz ID: " + client.getClientId() + " | " + orderIndex + " - Buyurtmasi \n" + "✅ Buyurtma sotildi! ");
     }
 
     private void handleCallbackQuery(Update update) {
@@ -608,155 +630,6 @@ public class ClientBot extends TelegramLongPollingBot {
 //            awaitingAddress.put(chatId, true);
     }
 
-    private InlineKeyboardButton createButton(String text, String callbackData) {
-        InlineKeyboardButton button = new InlineKeyboardButton();
-        button.setText(text);
-        button.setCallbackData(callbackData);
-        return button;
-    }
-
-    private void sendMessageWithMarkup(String chatId, String text, InlineKeyboardMarkup markup) {
-        SendMessage message = new SendMessage();
-        message.setChatId(String.valueOf(chatId));
-        message.setText(text);
-        message.setReplyMarkup(markup);
-
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void sendOrderToGroup(Client client, Long orderIndex, String orderDetails) {
-        String groupIdd = "-1002332417212";
-
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
-        List<InlineKeyboardButton> row = new ArrayList<>();
-        row.add(createButton("✅ Sotildi", "MARK_SOLD_" + client.getChatId() + "_" + orderIndex));
-        row.add(createButton("❌ Bekor qilindi", "MARK_CANCELED_" + client.getChatId() + "_" + orderIndex));
-        rows.add(row);
-        markup.setKeyboard(rows);
-
-        sendMessageWithMarkup(groupIdd, "📦 **Yangi buyurtma!** (Mijoz ID: " + client.getChatId() + " | Buyurtma: " + orderIndex + ")\n\n" + orderDetails, markup);
-    }
-
-    private void showOrderDetails(long chatId, long foodId, int messageId, int quantity) {
-        Menu menu = menuRepository.findById(foodId).orElse(null);
-        if (menu == null) {
-            sendMessage(chatId, "Ovqat topilmadi.");
-            return;
-        }
-
-        String details = "Tanlangan mahsulot:\n" + "ID: " + menu.getId() + "\n" + "Nomi: " + menu.getFood_name() + "\n" + "Narxi: " + (menu.getFood_price() * quantity) + " so'm\n" + "Miqdor: " + quantity;
-
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
-        List<InlineKeyboardButton> row1 = new ArrayList<>();
-        row1.add(createButton("+", "ADD_QUANTITY_" + foodId));
-        row1.add(createButton("-", "REMOVE_QUANTITY_" + foodId));
-
-        List<InlineKeyboardButton> row2 = new ArrayList<>();
-        row2.add(createButton("Savatga qaytish", "VIEW_BASKET" + foodId));
-        row2.add(createButton("Orqaga", "SHOW_ORDERS_MENU"));
-
-        rows.add(row1);
-        rows.add(row2);
-
-        markup.setKeyboard(rows);
-
-        EditMessageText editMessage = new EditMessageText();
-        editMessage.setChatId(String.valueOf(chatId));
-        editMessage.setMessageId(messageId);
-        editMessage.setText(details);
-        editMessage.setReplyMarkup(markup);
-
-        try {
-            execute(editMessage);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void updateOrder(long chatId, long foodId, int messageId, int delta) {
-        Map<Long, Integer> userOrders = orders.getOrDefault(chatId, new HashMap<>());
-        int currentQuantity = userOrders.getOrDefault(foodId, 0);
-        int newQuantity = Math.max(currentQuantity + delta, 0);
-
-        userOrders.put(foodId, newQuantity);
-        orders.put(chatId, userOrders);
-
-        showOrderDetails(chatId, foodId, messageId, newQuantity);
-    }
-
-    private void finalizeOrder(long chatId) {
-        long foodId = currentOrder.get(chatId);
-        Map<Long, Integer> userBasket = basket.getOrDefault(chatId, new HashMap<>());
-
-        int quantity = userBasket.getOrDefault(foodId, 0) + 1;
-        userBasket.put(foodId, quantity);
-
-        basket.put(chatId, userBasket);
-
-        sendMessage(chatId, "Buyurtma savatchaga qo'shildi!");
-        currentOrder.remove(chatId);
-    }
-
-    private void showBasket(long chatId) {
-        Map<Long, Integer> userOrders = orders.get(chatId);
-        if (userOrders == null || userOrders.isEmpty()) {
-            sendMessage(chatId, "Savatchangiz bo'sh.");
-            return;
-        }
-
-        StringBuilder basketDetails = new StringBuilder("Savatchadagi buyurtmalar:\n");
-        int totalAmount = 0;
-
-        for (Map.Entry<Long, Integer> entry : userOrders.entrySet()) {
-            long foodId = entry.getKey();
-            int quantity = entry.getValue();
-            Menu menu = menuRepository.findById(foodId).orElse(null);
-
-            if (menu != null) {
-                double itemTotal = menu.getFood_price() * quantity;
-                totalAmount += itemTotal;
-
-                basketDetails.append("ID: ").append(menu.getId()).append("\nNomi: ").append(menu.getFood_name()).append("\nNarxi: ").append(menu.getFood_price()).append(" so'm").append("\nMiqdor: ").append(quantity).append("\nJami: ").append(itemTotal).append(" so'm\n\n");
-            }
-        }
-
-        basketDetails.append("Umumiy summa: ").append(totalAmount).append(" so'm");
-
-        SendMessage message = new SendMessage(String.valueOf(chatId), basketDetails.toString());
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
-        List<InlineKeyboardButton> row1 = new ArrayList<>();
-        row1.add(createButton("Savatchani tozalash", "CLEAR_BASKET"));
-        row1.add(createButton("Tasdiqlash", "CONFIRM_ORDER"));
-
-        List<InlineKeyboardButton> row2 = new ArrayList<>();
-        row2.add(createButton("Savatchani yangilash", "UPDATE_BASKET"));
-        row2.add(createButton("Orqaga", "SHOW_ORDERS_MENU"));
-
-        rows.add(row1);
-        rows.add(row2);
-
-        markup.setKeyboard(rows);
-        message.setReplyMarkup(markup);
-
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
-
-    }
-
     private void updateBasket(long chatId) {
         Map<Long, Integer> userOrders = orders.get(chatId);
         if (userOrders == null || userOrders.isEmpty()) {
@@ -812,7 +685,110 @@ public class ClientBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+    private void finalizeOrder(long chatId) {
+        long foodId = currentOrder.get(chatId);
+        Map<Long, Integer> userBasket = basket.getOrDefault(chatId, new HashMap<>());
 
+        int quantity = userBasket.getOrDefault(foodId, 0) + 1;
+        userBasket.put(foodId, quantity);
+
+        basket.put(chatId, userBasket);
+
+        sendMessage(chatId, "Buyurtma savatchaga qo'shildi!");
+        currentOrder.remove(chatId);
+    }
+
+    public void broadcastMessageToClients(String messageText) {
+        List<Client> clients = clientRepository.findAll();
+        for (Client client : clients) {
+            try {
+                SendMessage message = new SendMessage();
+                message.setChatId(String.valueOf(client.getChatId()));
+                message.setText(messageText);
+                execute(message);
+                System.out.println("Xabar yuborildi: " + client.getChatId());
+            } catch (TelegramApiException e) {
+                System.err.println("Xabar yuborishda xatolik yuz berdi: " + client.getChatId());
+                e.printStackTrace();
+            }
+        }
+    }
+    private void sendMessageWithPhoneRequest(long chatId, String text) {
+        KeyboardButton contactButton = new KeyboardButton();
+        contactButton.setText("📞 Telefon raqamni yuborish");
+        contactButton.setRequestContact(true);
+
+        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
+        replyKeyboardMarkup.setSelective(true);
+        replyKeyboardMarkup.setResizeKeyboard(true);
+        replyKeyboardMarkup.setOneTimeKeyboard(true);
+
+        KeyboardRow row = new KeyboardRow();
+        row.add(contactButton);
+        replyKeyboardMarkup.setKeyboard(Collections.singletonList(row));
+
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText(text);
+        sendMessage.setReplyMarkup(replyKeyboardMarkup);
+
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+    private void sendOrderToGroup(Client client, Long orderIndex, String orderDetails) {
+        String groupIdd = "-1002332417212";
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        List<InlineKeyboardButton> row = new ArrayList<>();
+        row.add(createButton("✅ Sotildi", "MARK_SOLD_" + client.getChatId() + "_" + orderIndex));
+        row.add(createButton("❌ Bekor qilindi", "MARK_CANCELED_" + client.getChatId() + "_" + orderIndex));
+        rows.add(row);
+        markup.setKeyboard(rows);
+
+        sendMessageWithMarkup(groupIdd, "📦 **Yangi buyurtma!** (Mijoz ID: " + client.getChatId() + " | Buyurtma: " + orderIndex + ")\n\n" + orderDetails, markup);
+    }
+
+    private void sendMessages(long chatId, String message) {
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText(message);
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    private void sendMessage(long chatId, String text) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+        message.enableHtml(true);
+
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setResizeKeyboard(true); // Tugmalarni kichraytirish
+        keyboardMarkup.setOneTimeKeyboard(false); // Klaviatura ekranda qoladi
+        List<KeyboardRow> keyboardRows = new ArrayList<>();
+        KeyboardRow row1 = new KeyboardRow();
+
+        row1.add("Menu");
+        row1.add("Savatcha");
+        row1.add("Buyurtma berish");
+        keyboardRows.add(row1);
+
+        keyboardMarkup.setKeyboard(keyboardRows);
+        message.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
     private void sendInlineKeyboard(long chatId, String text, String[] buttons, String[] callbacks) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -836,16 +812,22 @@ public class ClientBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
-    private void sendMessages(long chatId, String message) {
-        SendMessage sendMessage = new SendMessage();
-        sendMessage.setChatId(String.valueOf(chatId));
-        sendMessage.setText(message);
+    private InlineKeyboardButton createButton(String text, String callbackData) {
+        InlineKeyboardButton button = new InlineKeyboardButton();
+        button.setText(text);
+        button.setCallbackData(callbackData);
+        return button;
+    }
+    private void sendMessageWithMarkup(String chatId, String text, InlineKeyboardMarkup markup) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+        message.setReplyMarkup(markup);
+
         try {
-            execute(sendMessage);
+            execute(message);
         } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
     }
-
-
 }
