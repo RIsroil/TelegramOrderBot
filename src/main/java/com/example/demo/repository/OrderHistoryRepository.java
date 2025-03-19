@@ -23,9 +23,26 @@ public interface OrderHistoryRepository extends JpaRepository<OrderHistory, Long
                                                            @Param("startDate") LocalDateTime startDate,
                                                            @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT MIN(o.orderDate) FROM OrderHistory o WHERE o.status = 'SOLD'")
-    LocalDate findEarliestOrderDate();
+    @Query("SELECT MIN(o.orderDate) FROM OrderHistory o")
+    LocalDate findEarliestDate();
 
+    @Query("SELECT DISTINCT o.client FROM OrderHistory o WHERE o.status = 'CANCELED'")
+    List<Client> findClientsWithCanceledOrders();
+
+    @Query("SELECT o.client, COUNT(o) FROM OrderHistory o " +
+            "WHERE o.status = 'CANCELED' " +
+            "AND o.orderDate >= :twoMonthsAgo " +
+            "GROUP BY o.client " +
+            "ORDER BY COUNT(o) DESC")
+    List<Object[]> findClientsWithCanceledOrdersLast2Months(@Param("twoMonthsAgo") LocalDateTime twoMonthsAgo);
+
+    List<OrderHistory> findByClientAndOrderDateAfter(Client client, LocalDateTime orderDate);
+    int countByClientPhoneNumberAndStatus(String clientPhoneNumber, OrderStatus status);
+
+
+
+    @Query("SELECT o.client.phoneNumber, COUNT(o) FROM OrderHistory o WHERE o.status = 'CANCELED' AND o.orderDate >= :from GROUP BY o.client.phoneNumber")
+    List<Object[]> findCanceledOrdersCountForClients(@Param("from") LocalDateTime from);
 
 
 }

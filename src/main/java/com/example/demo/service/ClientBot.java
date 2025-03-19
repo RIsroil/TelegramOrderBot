@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.config.ClientBotConfig;
 import com.example.demo.model.*;
+import com.example.demo.repository.BlockedUserRepository;
 import com.example.demo.repository.ClientRepository;
 import com.example.demo.repository.MenuRepository;
 import com.example.demo.repository.OrderHistoryRepository;
@@ -20,6 +21,10 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 
@@ -27,20 +32,19 @@ import java.util.*;
 public class ClientBot extends TelegramLongPollingBot {
 
     private final ClientBotConfig config;
-
     private final OrderHistoryRepository orderHistoryRepository;
-
     private final MenuRepository menuRepository;
-
     private final ClientRepository clientRepository;
+    private final BlockedUserRepository blockedUserRepository;
 
     private static final long groupId = -1002332417212L;
 
-    public ClientBot(OrderHistoryRepository orderHistoryRepository, ClientBotConfig config, MenuRepository menuRepository, ClientRepository clientRepository) {
+    public ClientBot(BlockedUserRepository blockedUserRepository,OrderHistoryRepository orderHistoryRepository, ClientBotConfig config, MenuRepository menuRepository, ClientRepository clientRepository) {
         this.config = config;
         this.menuRepository = menuRepository;
         this.clientRepository = clientRepository;
         this.orderHistoryRepository = orderHistoryRepository;
+        this.blockedUserRepository = blockedUserRepository;
 
         List<BotCommand> commands = new ArrayList<>();
         commands.add(new BotCommand("/start", "Botni boshlash"));
@@ -75,6 +79,48 @@ public class ClientBot extends TelegramLongPollingBot {
         long chatId;
         Client client;
 
+        if (update.hasMessage()) {
+            chatId = update.getMessage().getChatId();
+        } else if (update.hasCallbackQuery()) {
+            chatId = update.getCallbackQuery().getMessage().getChatId();
+        } else {
+            return;
+        }
+
+        client = clientRepository.findByChatId(chatId).orElse(null);
+        if (client != null && client.getPhoneNumber() != null && client.isBlocked()) {
+            Optional<BlockedUser> blockedUserOpt = blockedUserRepository.findByPhoneNumber(client.getPhoneNumber());
+
+            if (blockedUserOpt.isPresent()) {
+                BlockedUser blockedUser = blockedUserOpt.get();
+                LocalDateTime now = LocalDateTime.now();
+
+                if (now.isBefore(blockedUser.getBlockedUntil())) {
+                    long remainingMinutes = ChronoUnit.MINUTES.between(now, blockedUser.getBlockedUntil());
+                    long days = remainingMinutes / (24 * 60);
+                    long hours = (remainingMinutes % (24 * 60)) / 60;
+                    long minutes = remainingMinutes % 60;
+
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
+                    String formattedTime = blockedUser.getBlockedUntil().format(formatter);
+
+                    String message = "🚫 Siz admin tomonidan bloklangansiz!\n\n"
+                            + "🕒 Blok tugash vaqti: <b>" + days + " kun " + hours + " soat " + minutes + " daqiqa</b>\n"
+                            + "📅 Tugash sanasi: <b>" + formattedTime + "</b>\n\n"
+                            + "Iltimos, administrator bilan bog‘laning.";
+
+                    sendMessage(chatId, message);
+                    return;
+                } else {
+                    // **Blok muddati tugagan bo‘lsa, avtomatik ochish**
+                    blockedUserRepository.delete(blockedUser);
+                    client.setBlocked(false);
+                    clientRepository.save(client);
+                    sendMessage(chatId, "✅ Siz blokdan chiqdingiz. Endi buyurtma bera olasiz.");
+                }
+            }
+        }
+
         if (update.hasMessage() && update.getMessage().hasContact()) {
             chatId = update.getMessage().getChatId();
             client = clientRepository.findByChatId(chatId).orElse(null);
@@ -106,10 +152,10 @@ public class ClientBot extends TelegramLongPollingBot {
         }
 
         if (update.hasMessage() && update.getMessage().hasText()) {
+
             String message = update.getMessage().getText();
             chatId = update.getMessage().getChatId();
 
-            client = clientRepository.findByChatId(chatId).orElse(null);
 
             if (client == null && !message.equals("/start")) {
                 sendMessages(chatId, "❌ Avval /start buyrug‘ini yuboring.");
@@ -846,6 +892,4 @@ public class ClientBot extends TelegramLongPollingBot {
             throw new RuntimeException(e);
         }
     }
-
-
 }

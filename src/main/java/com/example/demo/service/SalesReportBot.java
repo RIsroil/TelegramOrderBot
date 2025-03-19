@@ -1,8 +1,12 @@
 package com.example.demo.service;
 
 import com.example.demo.config.HisobotBotConfig;
+import com.example.demo.model.BlockedUser;
+import com.example.demo.model.Client;
 import com.example.demo.model.OrderHistory;
 import com.example.demo.model.OrderStatus;
+import com.example.demo.repository.BlockedUserRepository;
+import com.example.demo.repository.ClientRepository;
 import com.example.demo.repository.OrderHistoryRepository;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -19,11 +23,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 public class SalesReportBot extends TelegramLongPollingBot {
@@ -40,11 +42,16 @@ public class SalesReportBot extends TelegramLongPollingBot {
 
     private final HisobotBotConfig config;
     private final OrderHistoryRepository orderHistoryRepository;
+    private final BlockedUserRepository blockedUserRepository;
+    private final ClientRepository clientRepository;
+    private final BlockedUserRepository blockedUsersRepository;
 
-    public SalesReportBot(HisobotBotConfig config,OrderHistoryRepository orderHistoryRepository) {
+    public SalesReportBot(BlockedUserRepository blockedUsersRepository,ClientRepository clientRepository,BlockedUserRepository blockedUserRepository,HisobotBotConfig config,OrderHistoryRepository orderHistoryRepository) {
         this.config = config;
         this.orderHistoryRepository = orderHistoryRepository;
-
+        this.blockedUserRepository = blockedUserRepository;
+        this.clientRepository = clientRepository;
+        this.blockedUsersRepository = blockedUsersRepository;
         List<BotCommand> commands = new ArrayList<>();
         commands.add(new BotCommand("/start", "botni boshlash"));
         commands.add(new BotCommand("/yordam", "yordam olish"));
@@ -73,13 +80,13 @@ public class SalesReportBot extends TelegramLongPollingBot {
                         "/Hisobot_olish - Kunlik/Haftalik/Oylik hisobotlar\n" +
                         "/Sana_boyicha_hisobot - Sana kiriting va kerakli Hisobotlarni oling\n" +
                         "/Oldingi_oyning_hisobi - O'tgan oyning hisobotlari\n" +
-                        "/Oldingi_haftaning_hisobi - O'tgan haftaning hisobotlari\n" +
-                        "/barchasini_tozalash - menudagi barcha malumotlarni o'chirish");
+                        "/Oldingi_haftaning_hisobi - O'tgan haftaning hisobotlari\n"
+                        );
                 case "/Hisobot_olish" -> sendReportOptions(chatId);
                 case "/Sana_boyicha_hisobot" -> showDateSelectionOptions(chatId);
                 case "/Oldingi_oyning_hisobi" -> showPreviousMonthReportOptions(chatId);
                 case "/Oldingi_haftaning_hisobi" -> showPreviousWeekReportOptions(chatId);
-                default -> sendMessage(chatId, "Iltimos, mavjud buyruqlardan birini tanlang: /start ni bosing");
+//                default -> sendMessage(chatId, "Iltimos, mavjud buyruqlardan birini tanlang: /start ni bosing");
             }
             if (userState.containsKey(chatId)) {
                 handleCustomDateSelectionSold(chatId, message);
@@ -97,9 +104,74 @@ public class SalesReportBot extends TelegramLongPollingBot {
             if (callbackData.startsWith("PHONE_")) {
                 if (callbackData.length() > 6) {
                     String phoneNumber1 = callbackData.substring(6);
-                    sendUserOrderHistory(chatId, phoneNumber1);
+
+                    // Mijozni bazadan topish
+                    Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber1);
+                    if (optionalClient.isPresent()) {
+                        Client client = optionalClient.get(); // Optional dan Client ni olish
+                        sendUserOrderHistory(chatId, phoneNumber1, client);
+                    } else {
+                        sendMessage(chatId, "❌ Telefon raqam bo‘yicha mijoz topilmadi.");
+                    }
+
                 }
             }
+
+            if (callbackData.startsWith("UNBLOCK_USER_")) {
+                String phoneNumber = callbackData.substring(13);
+                unblockUser(chatId, phoneNumber);
+                return;
+            }
+
+            if (callbackData.startsWith("CONFIRM_BLOCK_")) {
+                String phoneNumber = callbackData.substring(14);
+                confirmBlockUser(chatId, phoneNumber, 3);
+                return;
+            }
+
+            if (callbackData.startsWith("BLOCK_USER_")) {
+                String[] parts = callbackData.split("_", 4); // 4 qismga ajratamiz
+
+                if (parts.length == 3) {
+                    // Telefon raqamni olish va bloklash variantlarini chiqarish
+                    String phoneNumber = parts[2];  // Telefon raqamni olish
+                    showBlockOptions(chatId, phoneNumber);
+                } else if (parts.length == 4) {
+                    // Telefon raqam va bloklash kunini olish
+                    String phoneNumber = parts[2];
+                    String daysStr = parts[3];
+
+                    try {
+                        int days = Integer.parseInt(daysStr.trim());  // Kunni integer formatga o'tkazish
+
+                        // Foydalanuvchini bazadan qidirish
+                        Optional<Client> userToBlock = clientRepository.findByPhoneNumber(phoneNumber);
+                        if (userToBlock.isEmpty()) {
+                            sendMessage(chatId, "❌ Foydalanuvchi topilmadi.");
+                            return;
+                        }
+
+                        // Foydalanuvchini bloklash
+                        handleBlockUser(chatId, phoneNumber, days);
+
+                    } catch (NumberFormatException e) {
+                        sendMessage(chatId, "❌ Noto‘g‘ri format! Kunni to‘g‘ri kiriting.");
+                    }
+                } else {
+                    sendMessage(chatId, "❌ Noto‘g‘ri format! Qayta urinib ko‘ring.");
+                }
+            }
+
+            if (callbackData.equals("SHOW_CLIENT_PHONES")) {
+                sendClientPhoneNumbers(chatId);
+                return;
+            }
+
+
+
+
+
+
 
             switch (callbackData) {
                 case "GET_REPORT" -> sendReportOptions(chatId);
@@ -155,13 +227,18 @@ public class SalesReportBot extends TelegramLongPollingBot {
 
 
                 case "ORDERED_REPORT" -> sendOrderReport(chatId, OrderStatus.ORDERED);
-                case "CANCELED_REPORT", "BACK_TO_CANCELED_NUMBERS" -> sendCanceledOrders(chatId);
+                case "CANCELED_REPORT", "BACK_TO_CANCELED_NUMBERS","BACK_TO_USER_ORDERS" -> sendCanceledOrders(chatId);
 
-                case "BACK_TO_CANCELED_TO_WELCOME","BACK_TO_CANCELED" -> sendWelcomeMessage(chatId);
+                case "BACK_TO_CANCELED_TO_WELCOME", "BACK_TO_CANCELED", "BACK_TO_ADMIN_MENU","BACK_TO_MENU" -> sendWelcomeMessage(chatId);
+                case "BACK_TO_CANCELED_LIST" -> sendCanceledUsersList(chatId);
+                case "BLOCK_USERS" -> sendBlockedUsers(chatId);
+                case "BLOCKED_USERS" -> sendUnblockedUsers(chatId);
+                case "BLOCKED_USERS_LIST" -> sendBlockedUsersList(chatId);
+
+
             }
         }
     }
-
 
     private void sendWelcomeMessage(long chatId) {
         String text = "Assalomu alaykum! \nHush kelibsiz! Nimani ko‘rishni hohlaysiz?";
@@ -170,7 +247,8 @@ public class SalesReportBot extends TelegramLongPollingBot {
         List<List<InlineKeyboardButton>> row1 = new ArrayList<>();
         row1.add(List.of(createButton("📊 Kun/Oy hisobotlari", "GET_REPORT")));
         row1.add(List.of(createButton("🟡 ORDERED qilingan buyurtmalar\n(oxirgi 2 haftalik)", "ORDERED_REPORT")));
-        row1.add(List.of(createButton("🔴 CANCELED qilingan buyurtmalar\n(oxirgi 1 haftalik)", "CANCELED_REPORT")));
+        row1.add(List.of(createButton("🔴 CANCELED qilingan buyurtmalar\n(oxirgi 2 oylik)", "CANCELED_REPORT")));
+        row1.add(List.of(createButton("📞 Foydalanuvchi tarixi", "SHOW_CLIENT_PHONES")));
 
         markup.setKeyboard(row1);
 
@@ -201,13 +279,14 @@ public class SalesReportBot extends TelegramLongPollingBot {
         sendMessageWithMarkup(chatId, text, markup);
     }
 
+
     private void sendCanceledOrders(long chatId) {
-        LocalDateTime oneWeekAgo = LocalDateTime.now().minusWeeks(1);
+        LocalDateTime twoMonthAgo = LocalDateTime.now().minusMonths(2);
         List<OrderHistory> canceledOrders = orderHistoryRepository.findByStatusAndOrderDateBetween(
-                OrderStatus.CANCELED, oneWeekAgo, LocalDateTime.now());
+                OrderStatus.CANCELED, twoMonthAgo, LocalDateTime.now());
 
         if (canceledOrders.isEmpty()) {
-            sendMessage(chatId, "Oxirgi 1 haftada CANCELED bo'lgan buyurtmalar yo‘q.");
+            sendMessage(chatId, "Oxirgi 2 oyda buyurtmani CANCELED qilgan buyurtmachilar yo‘q.");
             return;
         }
 
@@ -216,64 +295,71 @@ public class SalesReportBot extends TelegramLongPollingBot {
             phoneOrders.put(order.getClient().getPhoneNumber(), order.getClient().getName());
         }
 
-        String text = "📞 Oxirgi 1 hafta ichida buyurtmasini CANCELED qilgan mijozlar:\n\n";
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        StringBuilder text = new StringBuilder("📞 Oxirgi 2 oy ichida CANCELED qilgan buyurtmalar:\n\n");
+
         for (Map.Entry<String, String> entry : phoneOrders.entrySet()) {
-            rows.add(List.of(createButton(entry.getValue() + " - " + entry.getKey(), "PHONE_" + entry.getKey())));
+            String name = entry.getValue(); // Mijoz ismi
+            String phone = entry.getKey(); // Telefon raqami
+            String status = blockedUsersRepository.existsByPhoneNumber(phone) ? "(Bloklangan)" : "(Aktiv)"; // Bloklangan yoki yo'q
+            int cancelCount = orderHistoryRepository.countByClientPhoneNumberAndStatus(phone, OrderStatus.CANCELED); // Bekor qilganlar soni
+
+            // Formatlangan matnni qo‘shish
+            text.append(String.format("👤 %-5s %-5s - 📞 %-5s - ❌ %d bora\n",
+                    name + status, "", phone, cancelCount));
         }
+//        rows.add(List.of(createButton("Foydalanuvchi tarixi:", "PHONE_")));
         rows.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_CANCELED_TO_WELCOME")));
+        rows.add(List.of(createButton("Foydalanuvchilarni Bloklash", "BLOCK_USERS")));
+        rows.add(List.of(createButton("Foydalanuvchilarni Blokdan chiqarish", "BLOCKED_USERS")));
         markup.setKeyboard(rows);
-        sendMessageWithMarkup(chatId, text, markup);
+        sendMessageWithMarkup(chatId, String.valueOf(text), markup);
     }
-    private void sendUserOrderHistory(long chatId, String phoneNumber) {
-        LocalDateTime twoWeeksAgo = LocalDateTime.now().minusWeeks(2);
-        List<OrderHistory> soldOrders = orderHistoryRepository.findByStatusAndOrderDateBetween(OrderStatus.SOLD, twoWeeksAgo, LocalDateTime.now());
-        List<OrderHistory> canceledOrders = orderHistoryRepository.findByStatusAndOrderDateBetween(OrderStatus.CANCELED, twoWeeksAgo, LocalDateTime.now());
-        List<OrderHistory> orderedOrders = orderHistoryRepository.findByStatusAndOrderDateBetween(OrderStatus.ORDERED, twoWeeksAgo, LocalDateTime.now());
 
-        List<OrderHistory> userOrders = new ArrayList<>();
-        userOrders.addAll(soldOrders);
-        userOrders.addAll(canceledOrders);
-        userOrders.addAll(orderedOrders);
+    private void sendClientPhoneNumbers(long chatId) {
+        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusMonths(3);
 
-        userOrders.removeIf(order -> !order.getClient().getPhoneNumber().equals(phoneNumber));
+        List<Client> recentClients = clientRepository.findClientsWithOrdersLast3Months(threeMonthsAgo);
 
-        if (userOrders.isEmpty()) {
-            sendMessage(chatId, "Ushbu mijoz oxirgi 2 haftada hech qanday buyurtma bermagan.");
+        if (recentClients.isEmpty()) {
+            sendMessage(chatId, "📌 Oxirgi 3 oyda buyurtma bergan mijozlar yo‘q.");
             return;
         }
-        StringBuilder report = new StringBuilder("📜 " + phoneNumber + " oxirgi 2 haftalik buyurtmalari:\n\n");
 
-        for (OrderHistory order : userOrders) {
-            String statusTag="";
+        Map<String, Long> cancelCountMap = new HashMap<>();
+        List<Object[]> canceledData = orderHistoryRepository.findCanceledOrdersCountForClients(threeMonthsAgo);
 
-            if(order.getStatus() == OrderStatus.SOLD){
-                statusTag = "🟢 Sotilgan Buyurtma";
-            } else if(order.getStatus() == OrderStatus.CANCELED){
-                statusTag = "🔴 Bekor qilingan Buyurtma";
-            } else if (order.getStatus() == OrderStatus.ORDERED){
-                statusTag = "ORDERED qilingan Buyurtma";
-            }
-
-            report.append(statusTag).append("\n")
-                    .append("🆔 Buyurtma: ").append(order.getOrderIndex()).append("\n")
-                    .append("👤 *Ism:* ").append(order.getClient().getName()).append("\n")
-                    .append("📞 *Telefon:* ").append(order.getClient().getPhoneNumber()).append("\n")
-                    .append("⏳ Olib ketish vaqti: ").append(order.getClient().getPickupTime()).append("\n\n")
-                    .append("💰 Jami narx: ").append(order.getTotalPrice()).append(" so'm\n")
-                    .append("------------------\n");
+        for (Object[] obj : canceledData) {
+            String phoneNumber = (String) obj[0];
+            Long cancelCount = (Long) obj[1];
+            cancelCountMap.put(phoneNumber, cancelCount);
         }
+
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(List.of(List.of(createButton("⬅️ Orqaga", "BACK_TO_CANCELED_NUMBERS"))));
-        sendMessageWithMarkup(chatId, report.toString(), markup);
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (Client client : recentClients) {
+            String phoneNumber = client.getPhoneNumber();
+            String cancelText = cancelCountMap.containsKey(phoneNumber) ? " ❌" + cancelCountMap.get(phoneNumber) + " marta" : "";
+            String buttonText = client.getName() + " - " + phoneNumber + cancelText;
+            String callbackData = "PHONE_" + phoneNumber;
+
+            rows.add(List.of(createButton(buttonText, callbackData)));
+        }
+
+        rows.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_MENU")));
+        markup.setKeyboard(rows);
+
+        sendMessageWithMarkup(chatId, "📞 Oxirgi 3 oyda buyurtma bergan mijozlar:", markup);
     }
+
 
     private void sendOrderReport(long chatId, OrderStatus status) {
         List<OrderHistory> orders = orderHistoryRepository.findByStatusAndOrderDateBetween(
                 status, LocalDate.now().minusWeeks(2).atStartOfDay(), LocalDate.now().atTime(23, 59, 59));
         if (orders.isEmpty()) {
-            sendMessage(chatId, "ORDERED bo'lgan buyurtmalar yo‘q. Barcha buyurtma qilingan maxsulotlar SOLD yoki CANCELED deb belgilangan!");
+            sendMessage(chatId, "ORDERED bo'lgan buyurtmalar yo‘q. Barcha buyurtma SOLD yoki CANCELED deb belgilangan!");
             return;
         }
         StringBuilder report = new StringBuilder("📊 " + status + " buyurtmalar:\n\n");
@@ -519,7 +605,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
         LocalDate today = LocalDate.now();
         LocalDate threeMonthsAgo = today.minusMonths(3);
 
-        LocalDate botStartDate = orderHistoryRepository.findEarliestOrderDate();
+        LocalDate botStartDate = orderHistoryRepository.findEarliestDate();
         if (botStartDate == null) {
             sendMessage(chatId, "📊 Hali birorta ham buyurtma mavjud emas.");
             return;
@@ -576,7 +662,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
         LocalDate today = LocalDate.now();
         LocalDate threeMonthsAgo = today.minusMonths(3);
 
-        LocalDate botStartDate = orderHistoryRepository.findEarliestOrderDate();
+        LocalDate botStartDate = orderHistoryRepository.findEarliestDate();
         if (botStartDate == null) {
             sendMessage(chatId, "📊 ORDERED bo'lgan buyurtmalar yo'q");
             return;
@@ -633,7 +719,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
         LocalDate today = LocalDate.now();
         LocalDate threeMonthsAgo = today.minusMonths(3);
 
-        LocalDate botStartDate = orderHistoryRepository.findEarliestOrderDate();
+        LocalDate botStartDate = orderHistoryRepository.findEarliestDate();
         if (botStartDate == null) {
             sendMessage(chatId, "📊 Hali birorta ham buyurtma mavjud emas.");
             return;
@@ -718,4 +804,314 @@ public class SalesReportBot extends TelegramLongPollingBot {
         return button;
     }
 
+    private void sendCanceledUsersList(long chatId) {
+        LocalDateTime twoMonthsAgo = LocalDateTime.now().minusMonths(2);
+        List<OrderHistory> canceledOrders = orderHistoryRepository.findByStatusAndOrderDateBetween(
+                OrderStatus.CANCELED, twoMonthsAgo, LocalDateTime.now());
+
+        if (canceledOrders.isEmpty()) {
+            sendMessage(chatId, "📌 Oxirgi 2 oyda buyurtmalarni bekor qilgan foydalanuvchilar yo‘q.");
+            return;
+        }
+
+        Map<Client, Integer> userCancelCount = new HashMap<>();
+        for (OrderHistory order : canceledOrders) {
+            Client client = order.getClient();
+            userCancelCount.put(client, userCancelCount.getOrDefault(client, 0) + 1);
+        }
+
+        StringBuilder text = new StringBuilder("📌 Oxirgi 2 oyda buyurtmalarni bekor qilgan foydalanuvchilar:\n\n");
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+        int index = 1;
+
+        for (Map.Entry<Client, Integer> entry : userCancelCount.entrySet()) {
+            Client client = entry.getKey();
+            int count = entry.getValue();
+            String phone = client.getPhoneNumber();
+            String name = client.getName();
+
+            text.append(index).append(". ").append(name).append(" -> ").append(phone)
+                    .append(" (").append(count).append(" ta buyurtmani bekor qilgan)\n");
+
+            buttons.add(List.of(createButton("🚫 " + name + " -> " + phone, "BLOCK_USER_" + phone)));
+            index++;
+        }
+
+        buttons.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_ADMIN_MENU")));
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup(buttons);
+
+        sendMessageWithMarkup(chatId, text.toString(), markup);
+    }
+
+
+//    private void handleBlockUser(long chatId, String phoneNumber, int days) {
+//        Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
+//        if (optionalClient.isEmpty()) {
+//            sendMessage(chatId, "❌ Foydalanuvchi topilmadi.");
+//            return;
+//        }
+//
+//        Client client = optionalClient.get();
+//        if (client.isBlocked()) {
+//            sendMessage(chatId, "🚫 " + client.getName()+"-> "+ client.getPhoneNumber() + " allaqachon bloklangan. " +
+//                    "Blok tugash vaqti: " + client.getBlockedUntil() + "      /start");
+//            return;
+//        }
+//
+//        client.blockForDays(days);
+//        clientRepository.save(client);
+//
+//        sendMessage(chatId, "🚫 " + client.getName() +"-> "+ client.getPhoneNumber() + " " + days + " kun bloklandi.\n" +
+//                "Blok tugash vaqti: " + client.getBlockedUntil() + "      /start");
+//    }
+
+    private void handleBlockUser(long chatId, String phoneNumber, int days) {
+        Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
+        if (optionalClient.isEmpty()) {
+            sendMessage(chatId, "❌ Foydalanuvchi topilmadi.");
+            return;
+        }
+
+        Client client = optionalClient.get();
+        LocalDateTime blockUntil = LocalDateTime.now().plusDays(days);
+
+        // **BlockedUser jadvaliga saqlash**
+        BlockedUser blockedUser = blockedUserRepository.findByPhoneNumber(phoneNumber)
+                .orElse(new BlockedUser());
+
+        blockedUser.setPhoneNumber(phoneNumber);
+        blockedUser.setBlockedUntil(blockUntil);
+        blockedUserRepository.save(blockedUser); // ✅ Saqlaymiz
+
+        // **Client jadvalida bloklanganlikni saqlash**
+        client.setBlocked(true);  // ✅ `isBlocked=true`
+        clientRepository.save(client);
+
+        sendMessage(chatId, "🚫 " + client.getName() + " " + days + " kunga bloklandi.\n"
+                + "📅 Tugash sanasi: " + blockUntil.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm")));
+    }
+
+
+    private void handleUnblockUser(long chatId, String phoneNumber) {
+        Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
+        if (optionalClient.isEmpty()) {
+            sendMessage(chatId, "❌ Foydalanuvchi topilmadi.");
+            return;
+        }
+
+        Client client = optionalClient.get();
+
+        // **BlockedUser jadvalidan o‘chirish**
+        blockedUserRepository.deleteByPhoneNumber(phoneNumber); // ✅ O‘chiramiz
+
+        // **Client jadvalida bloklanganligini olib tashlash**
+        client.setBlocked(false);  // ✅ `isBlocked=false`
+        clientRepository.save(client);
+
+        sendMessage(chatId, "✅ " + client.getName() + " blokdan chiqarildi.");
+    }
+
+
+
+
+    private void confirmBlockUser(long chatId, String phoneNumber, int days) {
+        LocalDateTime blockedUntil = LocalDateTime.now().plusDays(days);
+        BlockedUser blockedUser = new BlockedUser(phoneNumber, blockedUntil);
+        blockedUserRepository.save(blockedUser);
+
+        sendMessage(chatId, "✅ " + phoneNumber + " foydalanuvchi " + days + " kunga bloklandi.");
+
+        // **Foydalanuvchiga bloklanish haqida xabar yuborish**
+        sendMessageToClientBot(phoneNumber, "🚫 Siz " + days + " kunga bloklandingiz. " +
+                "Sabab: Buyurtmangizni bekor qildingiz. " +
+                "Blok muddati tugagach, yana buyurtma bera olasiz.");
+
+        sendCanceledUsersList(chatId);
+    }
+    private void sendBlockedUsers(long chatId) {
+        List<Object[]> clients = orderHistoryRepository.findClientsWithCanceledOrdersLast2Months(LocalDateTime.now().minusMonths(2));
+
+        if (clients.isEmpty()) {
+            sendMessage(chatId, "❌ Bloklanadigan foydalanuvchilar yo‘q.");
+            return;
+        }
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (Object[] obj : clients) {
+            Client client = (Client) obj[0];  // Mijoz obyekti
+            Long cancelCount = (Long) obj[1]; // Bekor qilingan buyurtmalar soni
+
+            if (!client.isBlocked()) {
+                String buttonText = "🚫 " + client.getName() + " -> " + client.getPhoneNumber() +
+                        " (2 oy ichida " + cancelCount + " ta bekor qilingan)";
+                String callbackData = "BLOCK_USER_" + client.getPhoneNumber();
+                rows.add(List.of(createButton(buttonText, callbackData)));
+            }
+        }
+
+        rows.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_CANCELED")));
+        markup.setKeyboard(rows);
+
+        String text = "📋 Bloklash uchun foydalanuvchini tanlang:";
+        sendMessageWithMarkup(chatId, text, markup);
+    }
+
+
+    private void unblockUser(long chatId, String phoneNumber) {
+        Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
+        if (optionalClient.isEmpty()) {
+            sendMessage(chatId, "❌ Foydalanuvchi topilmadi.");
+            return;
+        }
+
+        Client client = optionalClient.get();
+        if (!client.isBlocked()) {
+            sendMessage(chatId, "✅ " + client.getName() + " allaqachon blokdan chiqarilgan.");
+            return;
+        }
+
+        client.unblock();
+        clientRepository.save(client);
+
+        sendMessage(chatId, "✅ " + client.getName() + " blokdan chiqarildi.");
+    }
+
+
+    private void sendMessageToClientBot(String phoneNumber, String text) {
+        // Foydalanuvchini telefon raqami bo‘yicha topamiz
+        Client client = clientRepository.findByPhoneNumber(phoneNumber).orElse(null);
+        if (client != null) {
+            long chatId = client.getChatId();
+            sendMessage(chatId, text);
+        }
+    }
+    private void sendUnblockedUsers(long chatId) {
+        List<Client> blockedClients = clientRepository.findByIsBlockedTrue(); // 🔹 Faqat bloklanganlarni olish
+
+        if (blockedClients.isEmpty()) {
+            sendMessage(chatId, "❌ Bloklangan foydalanuvchilar yo‘q.");
+            return;
+        }
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (Client client : blockedClients) {
+            rows.add(List.of(createButton("✅ " + client.getName(), "UNBLOCK_USER_" + client.getPhoneNumber())));
+        }
+
+        rows.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_MENU")));
+        markup.setKeyboard(rows);
+
+        sendMessageWithMarkup(chatId, "🔓 Blokdan chiqarish uchun foydalanuvchini tanlang:", markup);
+    }
+
+//    private void sendUnblockedUsers(long chatId) {
+//        List<Client> clients = clientRepository.findAll();
+//        if (clients.isEmpty()) {
+//            sendMessage(chatId, "❌ Bloklangan foydalanuvchilar yo‘q.");
+//            return;
+//        }
+//
+//        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+//        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+//
+//        for (Client client : clients) {
+//            if (client.isBlocked()) { // Faqat bloklanganlarni chiqarish
+//                rows.add(List.of(createButton("✅ " + client.getName(), "UNBLOCK_USER_" + client.getPhoneNumber())));
+//            }
+//        }
+//
+//        rows.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_CANCELED")));
+//        markup.setKeyboard(rows);
+//
+//        sendMessageWithMarkup(chatId, "🔓 Blokdan chiqarish uchun foydalanuvchini tanlang:", markup);
+//    }
+
+
+    private void sendBlockedUsersList(long chatId) {
+        List<BlockedUser> blockedUsers = blockedUserRepository.findAll();
+        if (blockedUsers.isEmpty()) {
+            sendMessage(chatId, "🚫 Hozircha hech kim bloklanmagan.");
+            return;
+        }
+
+        StringBuilder text = new StringBuilder("🚫 Bloklangan foydalanuvchilar:\n\n");
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+        int index = 1;
+
+        for (BlockedUser blockedUser : blockedUsers) {
+            long remainingHours = ChronoUnit.HOURS.between(LocalDateTime.now(), blockedUser.getBlockedUntil());
+            long days = remainingHours / 24;
+            long hours = remainingHours % 24;
+
+            text.append(index).append(". ").append(blockedUser.getPhoneNumber())
+                    .append(" - ").append(days).append(" kun ").append(hours).append(" soat qoldi.\n");
+
+            buttons.add(List.of(createButton("🚪 Blokdan chiqarish", "UNBLOCK_USER_" + blockedUser.getPhoneNumber())));
+            index++;
+        }
+
+        buttons.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_ADMIN_MENU")));
+        sendMessageWithMarkup(chatId, text.toString(), new InlineKeyboardMarkup(buttons));
+    }
+
+    private void showBlockOptions(long chatId, String phoneNumber) {
+        String text = "📌 Siz +" + phoneNumber + " foydalanuvchini bloklamoqchisiz.\n" +
+                "Qancha vaqtga bloklamoqchisiz?";
+
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+        for (int i = 1; i <= 7; i++) {
+            // Bu tugmalar formatini "BLOCK_USER_{phone}_{days}" qilib yarating.
+            buttons.add(List.of(createButton(i + " kun", "BLOCK_USER_" + phoneNumber + "_" + i)));
+        }
+        buttons.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_CANCELED_LIST")));
+
+        sendMessageWithMarkup(chatId, text, new InlineKeyboardMarkup(buttons));
+    }
+
+    private void sendUserOrderHistory(long chatId, String phoneNumber, Client client) {
+        LocalDateTime twoMonthsAgo = LocalDateTime.now().minusMonths(2); // 2 hafta -> 2 oy
+
+        // Buyurtmalarni status bo‘yicha olish
+        List<OrderHistory> userOrders = orderHistoryRepository.findByClientAndOrderDateAfter(client, twoMonthsAgo);
+
+        if (userOrders.isEmpty()) {
+            sendMessage(chatId, "❌ " + phoneNumber + " oxirgi 2 oyda hech qanday buyurtma qilmagan.");
+            return;
+        }
+
+        StringBuilder report = new StringBuilder("📜 *" + phoneNumber + "* oxirgi 2 oylik buyurtmalari:\n\n");
+
+        for (OrderHistory order : userOrders) {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
+            String formattedDate = order.getOrderDate().format(formatter);
+
+            // Buyurtma statusiga qarab teg qo‘shish
+            String statusTag = switch (order.getStatus()) {
+                case SOLD -> "🟢 Sotilgan Buyurtma";
+                case CANCELED -> "🔴 Bekor qilingan Buyurtma";
+                case ORDERED -> "📦 ORDERED qilingan Buyurtma";
+            };
+
+            report.append(statusTag).append("\n")
+                    .append("🆔 Buyurtma: ").append(order.getOrderIndex()).append("\n")
+                    .append("👤 *Ism:* ").append(client.getName()).append("\n")
+                    .append("📞 *Telefon:* ").append(phoneNumber).append("\n")
+                    .append("⏳ Olib ketish vaqti: ").append(order.getClient().getPickupTime()).append("\n")
+                    .append("📅 Buyurtma berilgan vaqt: ").append(formattedDate).append("\n")
+                    .append("💰 *Jami narx:* ").append(order.getTotalPrice()).append(" so'm\n")
+                    .append("------------------\n");
+        }
+
+        // Inline tugmalar
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+        buttons.add(List.of(createButton("🚫 Foydalanuvchini Bloklash", "BLOCK_USER_" + phoneNumber)));
+        buttons.add(List.of(createButton("⬅️ Orqaga", "SHOW_CLIENT_PHONES"))) ;
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup(buttons);
+        sendMessageWithMarkup(chatId, report.toString(), markup);
+    }
 }
