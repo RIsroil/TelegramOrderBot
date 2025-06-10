@@ -21,12 +21,10 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-
 
 @Component
 public class ClientBot extends TelegramLongPollingBot {
@@ -36,7 +34,6 @@ public class ClientBot extends TelegramLongPollingBot {
     private final MenuRepository menuRepository;
     private final ClientRepository clientRepository;
     private final BlockedUserRepository blockedUserRepository;
-
     private static final long groupId = -1002332417212L;
 
     public ClientBot(BlockedUserRepository blockedUserRepository,OrderHistoryRepository orderHistoryRepository, ClientBotConfig config, MenuRepository menuRepository, ClientRepository clientRepository) {
@@ -78,7 +75,6 @@ public class ClientBot extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {
         long chatId;
         Client client;
-
         if (update.hasMessage()) {
             chatId = update.getMessage().getChatId();
         } else if (update.hasCallbackQuery()) {
@@ -86,15 +82,12 @@ public class ClientBot extends TelegramLongPollingBot {
         } else {
             return;
         }
-
         client = clientRepository.findByChatId(chatId).orElse(null);
         if (client != null && client.getPhoneNumber() != null && client.isBlocked()) {
             Optional<BlockedUser> blockedUserOpt = blockedUserRepository.findByPhoneNumber(client.getPhoneNumber());
-
             if (blockedUserOpt.isPresent()) {
                 BlockedUser blockedUser = blockedUserOpt.get();
                 LocalDateTime now = LocalDateTime.now();
-
                 if (now.isBefore(blockedUser.getBlockedUntil())) {
                     long remainingMinutes = ChronoUnit.MINUTES.between(now, blockedUser.getBlockedUntil());
                     long days = remainingMinutes / (24 * 60);
@@ -112,7 +105,6 @@ public class ClientBot extends TelegramLongPollingBot {
                     sendMessage(chatId, message);
                     return;
                 } else {
-                    // **Blok muddati tugagan bo‘lsa, avtomatik ochish**
                     blockedUserRepository.delete(blockedUser);
                     client.setBlocked(false);
                     clientRepository.save(client);
@@ -120,7 +112,6 @@ public class ClientBot extends TelegramLongPollingBot {
                 }
             }
         }
-
         if (update.hasMessage() && update.getMessage().hasContact()) {
             chatId = update.getMessage().getChatId();
             client = clientRepository.findByChatId(chatId).orElse(null);
@@ -134,7 +125,6 @@ public class ClientBot extends TelegramLongPollingBot {
             sendMainMenu(chatId);
             return;
         }
-
         if (update.hasMessage() && update.getMessage().hasContact()) {
             chatId = update.getMessage().getChatId();
             Contact contact = update.getMessage().getContact();
@@ -150,18 +140,13 @@ public class ClientBot extends TelegramLongPollingBot {
             sendMainMenu(chatId);
             return;
         }
-
         if (update.hasMessage() && update.getMessage().hasText()) {
-
             String message = update.getMessage().getText();
             chatId = update.getMessage().getChatId();
-
-
             if (client == null && !message.equals("/start")) {
                 sendMessages(chatId, "❌ Avval /start buyrug‘ini yuboring.");
                 return;
             }
-
             if (message.equals("/start")) {
                 if (client == null) {
                     client = new Client(chatId);
@@ -169,29 +154,24 @@ public class ClientBot extends TelegramLongPollingBot {
                     sendMessages(chatId, "👋 Assalomu alaykum! Iltimos, ismingizni kiriting:");
                     return;
                 }
-
                 if (client.getName() == null) {
                     sendMessages(chatId, "📝 Iltimos, ismingizni kiriting:");
                     return;
                 }
-
                 if (client.getPhoneNumber() == null) {
                     sendMessageWithPhoneRequest(chatId, "📞 Iltimos, telefon raqamingizni yuboring:");
                     return;
                 }
-
                 sendMessages(chatId, "✅ Assalomu alaykum, " + client.getName() + "! Sizning mijoz ID ingiz: " + client.getClientId());
                 sendMainMenu(chatId);
                 return;
             }
-
             if (client.getName() == null) {
                 client.setName(message);
                 clientRepository.save(client);
                 sendMessageWithPhoneRequest(chatId, "✅ Rahmat, " + message + "! Endi telefon raqamingizni yuboring:");
                 return;
             }
-
             if (client.getPhoneNumber() == null) {
                 client.setPhoneNumber(message);
                 clientRepository.save(client);
@@ -199,7 +179,6 @@ public class ClientBot extends TelegramLongPollingBot {
                 sendMainMenu(chatId);
                 return;
             }
-
             if (awaitingAddress.getOrDefault(chatId, false)) {
                 client.setDeliveryAddress(message);
                 client.setPickupTime(null);
@@ -208,7 +187,6 @@ public class ClientBot extends TelegramLongPollingBot {
                 confirmOrder(chatId);
                 return;
             }
-
             if (awaitingPickupTime.getOrDefault(chatId, false)) {
                 client.setPickupTime(message);
                 clientRepository.save(client);
@@ -218,24 +196,20 @@ public class ClientBot extends TelegramLongPollingBot {
                 confirmOrder(chatId);
                 return;
             }
-
             switch (message) {
                 case "📜 Menular bilan tanishish":
                 case "/Menular_bilan_tanishish":
                 case "Menu":
                     showMenus(chatId);
                     break;
-
                 case "🛒 Savatcha":
                 case "/Savatcha":
                     showBasket(chatId);
                     break;
-
                 case "Buyurtma berish":
                 case "📦 Buyurtma berish":
                     showMenu(chatId);
                     break;
-
                 case "🆘 Yordam":
                 case "/yordam":
                     sendMessages(chatId, "ℹ️ Quyidagi komandalarni ishlatishingiz mumkin:\n" +
@@ -244,7 +218,6 @@ public class ClientBot extends TelegramLongPollingBot {
                             "/Menudan_olish - mahsulotlarni olib tashlash\n" +
                             "/other - administrator bilan bog‘lanish");
                     break;
-
                 case "/other":
                     sendMessage(chatId, "✉️ Administrator: @Rakhimov_Isroil bilan bog‘lanishingiz mumkin.");
                     break;
@@ -253,7 +226,6 @@ public class ClientBot extends TelegramLongPollingBot {
                     sendMessage(chatId, "⚠️ Iltimos, menyudagi tugmalardan foydalaning!");
             }
         }
-
         else if (update.hasCallbackQuery()) {
             handleCallbackQuery(update);
         }
@@ -308,8 +280,8 @@ public class ClientBot extends TelegramLongPollingBot {
         message.enableHtml(true);
 
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
-        keyboardMarkup.setResizeKeyboard(true); // Tugmalarni kichraytirish
-        keyboardMarkup.setOneTimeKeyboard(false); // Klaviatura ekranda qoladi
+        keyboardMarkup.setResizeKeyboard(true);
+        keyboardMarkup.setOneTimeKeyboard(false);
         List<KeyboardRow> keyboardRows = new ArrayList<>();
         KeyboardRow row1 = new KeyboardRow();
 
@@ -335,11 +307,9 @@ public class ClientBot extends TelegramLongPollingBot {
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
         List<InlineKeyboardButton> row1 = new ArrayList<>();
         row1.add(createButton("Menuni ko'rish", "SHOW_MENU"));
         row1.add(createButton("Savatcha", "VIEW_BASKET"));
-
         rows.add(row1);
 
         markup.setKeyboard(rows);
@@ -353,15 +323,12 @@ public class ClientBot extends TelegramLongPollingBot {
     }
 
     private void showMenus(long chatId) {
-
         List<Menu> activeMenus = menuRepository.findByIsActive("Sotilmoqda");
         if (activeMenus.isEmpty()) {
             sendMessage(chatId, "Hozirda sotuvda mahsulotlar mavjud emas. Bot egasi @Raximov_Isroil bilan bog'laning!");
             return;
         }
-
         StringBuilder menuText = new StringBuilder("Ovqatlar ro'yxati:\n\n");
-
         for (Menu menu : activeMenus) {
             menuText.append(menu.getId()).append(". ").append(menu.getFood_name()).append(" - ").append(menu.getFood_price()).append(" so'm\n");
         }
@@ -372,9 +339,7 @@ public class ClientBot extends TelegramLongPollingBot {
         List<InlineKeyboardButton> row1 = new ArrayList<>();
         row1.add(createButton("Buyurtma berish", "SHOW_ORDERS_MENU"));
         row1.add(createButton("Savatcha", "VIEW_BASKET"));
-
         SendMessage message = new SendMessage(String.valueOf(chatId), menuText.toString());
-
         rows.add(row1);
 
         markup.setKeyboard(rows);
@@ -393,12 +358,9 @@ public class ClientBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Hozirda sotuvda mahsulotlar mavjud emas.");
             return;
         }
-
         StringBuilder menuText = new StringBuilder("Ovqatlar ro'yxati: \n\n");
-
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
         for (Menu menu : activeMenus) {
             List<InlineKeyboardButton> row = new ArrayList<>();
             row.add(createButton(menu.getId() + ". " + menu.getFood_name() + "  -  " + menu.getFood_price() + " so'm", "FOOD_" + menu.getId()));
@@ -466,16 +428,11 @@ public class ClientBot extends TelegramLongPollingBot {
                         .append(" = ").append(itemTotal).append(" so'm\n");
             }
         }
-
         confirmedOrderDetails.append(String.format("\n💰 Jami narx: %.2f so'm\n", totalAmount));
-
         OrderHistory history = new OrderHistory(client, orderIndex, confirmedOrderDetails.toString(), OrderStatus.ORDERED, totalAmount);
         orderHistoryRepository.save(history);
-
         sendMessages(chatId, "✅ Buyurtmangiz oshxonaga yuborildi!\n\n" + confirmedOrderDetails.toString());
-
         sendOrderToGroup(client, orderIndex, confirmedOrderDetails.toString());
-
         orders.remove(chatId);
     }
 
@@ -553,30 +510,24 @@ public class ClientBot extends TelegramLongPollingBot {
             sendMessage(chatId, "❌ Xatolik: Callback ma'lumotlari noto‘g‘ri.");
             return;
         }
-
         long clientId = Long.parseLong(data[2]);
         long orderIndex = Long.parseLong(data[3]);
-
         Client client = clientRepository.findByChatId(clientId).orElse(null);
         if (client == null) {
             sendMessage(chatId, "❌ Xatolik: Mijoz topilmadi.");
             return;
         }
-
         OrderHistory orderHistory = orderHistoryRepository.findByClientAndOrderIndex(client, orderIndex).orElse(null);
         if (orderHistory == null) {
             sendMessage(chatId, "❌ Xatolik: Buyurtma topilmadi.");
             return;
         }
-
         if (orderHistory.getStatus() == OrderStatus.SOLD) {
             sendMessage(chatId, "⚠️ Bu buyurtma allaqachon sotilgan!");
             return;
         }
-
         orderHistory.updateStatus(OrderStatus.SOLD);
         orderHistoryRepository.save(orderHistory);
-
         sendMessage(chatId, "Mijoz ID: " + client.getClientId() + " | " + orderIndex + " - Buyurtmasi \n" + "✅ Buyurtma sotildi! ");
     }
 
@@ -594,10 +545,10 @@ public class ClientBot extends TelegramLongPollingBot {
             showOrderDetails(chatId, foodId, messageId, 0);
         } else if (callbackData.startsWith("ADD_QUANTITY_")) {
             long foodId = Long.parseLong(callbackData.split("_")[2]);
-            updateOrder(chatId, foodId, messageId, 1); // Miqdorni oshirish
+            updateOrder(chatId, foodId, messageId, 1);
         } else if (callbackData.startsWith("REMOVE_QUANTITY_")) {
             long foodId = Long.parseLong(callbackData.split("_")[2]);
-            updateOrder(chatId, foodId, messageId, -1); // Miqdorni kamaytirish
+            updateOrder(chatId, foodId, messageId, -1);
         } else if (callbackData.startsWith("ADD_TO_BASKET_")) {
             finalizeOrder(chatId);
         } else if (callbackData.equals("CONFIRM_ORDER")) {
@@ -640,18 +591,18 @@ public class ClientBot extends TelegramLongPollingBot {
         } else if (callbackData.equals("RETURN_BACK_TO_SHOW_MENU")) {
             showMenus(chatId);
         }
-//        else if (callbackData.equals("CONFIRM_ORDER")) {
-//            // Eski manzil va vaqtni tozalash
-//            Client client = clientRepository.findById(chatId).orElse(null);
-//            client.setDeliveryAddress(null);
-//            client.setPickupTime(null);
-//            clientRepository.save(client);
-//            sendInlineKeyboard(chatId, "Buyurtmani qanday olmoqchisiz?",
-//                    new String[]{"🚗 Dastavka", "🏠 Borib olib ketish"},
-//                    new String[]{"DELIVERY", "PICKUP"});
-//        } else if (callbackData.equals("DELIVERY")) {
-//            sendMessage(chatId, "Manzilni kiriing iltimos: ");
-//            awaitingAddress.put(chatId, true);
+        else if (callbackData.equals("CONFIRM_ORDER")) {
+            Client client = clientRepository.findById(chatId).orElse(null);
+            client.setDeliveryAddress(null);
+            client.setPickupTime(null);
+            clientRepository.save(client);
+            sendInlineKeyboard(chatId, "Buyurtmani qanday olmoqchisiz?",
+                    new String[]{"🚗 Dastavka", "🏠 Borib olib ketish"},
+                    new String[]{"DELIVERY", "PICKUP"});
+        } else if (callbackData.equals("DELIVERY")) {
+            sendMessage(chatId, "Manzilni kiriing iltimos: ");
+            awaitingAddress.put(chatId, true);
+        }
     }
 
     private InlineKeyboardButton createButton(String text, String callbackData) {
@@ -695,25 +646,18 @@ public class ClientBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Ovqat topilmadi.");
             return;
         }
-
         String details = "Tanlangan mahsulot:\n" + "ID: " + menu.getId() + "\n" + "Nomi: " + menu.getFood_name() + "\n" + "Narxi: " + (menu.getFood_price() * quantity) + " so'm\n" + "Miqdor: " + quantity;
-
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
         List<InlineKeyboardButton> row1 = new ArrayList<>();
         row1.add(createButton("+", "ADD_QUANTITY_" + foodId));
         row1.add(createButton("-", "REMOVE_QUANTITY_" + foodId));
-
         List<InlineKeyboardButton> row2 = new ArrayList<>();
         row2.add(createButton("Savatga qaytish", "VIEW_BASKET" + foodId));
         row2.add(createButton("Orqaga", "SHOW_ORDERS_MENU"));
-
         rows.add(row1);
         rows.add(row2);
-
         markup.setKeyboard(rows);
-
         EditMessageText editMessage = new EditMessageText();
         editMessage.setChatId(String.valueOf(chatId));
         editMessage.setMessageId(messageId);
@@ -757,15 +701,12 @@ public class ClientBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Savatchangiz bo'sh.");
             return;
         }
-
         StringBuilder basketDetails = new StringBuilder("Savatchadagi buyurtmalar:\n");
         int totalAmount = 0;
-
         for (Map.Entry<Long, Integer> entry : userOrders.entrySet()) {
             long foodId = entry.getKey();
             int quantity = entry.getValue();
             Menu menu = menuRepository.findById(foodId).orElse(null);
-
             if (menu != null) {
                 double itemTotal = menu.getFood_price() * quantity;
                 totalAmount += itemTotal;
@@ -809,10 +750,8 @@ public class ClientBot extends TelegramLongPollingBot {
             sendMessage(chatId, "🛒 Savatchangiz bo'sh.");
             return;
         }
-
         StringBuilder basketDetails = new StringBuilder("🛒 Savatchangiz:\n\n");
         int totalAmount = 0;
-
         for (Map.Entry<Long, Integer> entry : userOrders.entrySet()) {
             long foodId = entry.getKey();
             int quantity = entry.getValue();
@@ -862,14 +801,12 @@ public class ClientBot extends TelegramLongPollingBot {
     private void sendInlineKeyboard(long chatId, String text, String[] buttons, String[] callbacks) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
         for (int i = 0; i < buttons.length; i++) {
             InlineKeyboardButton button = new InlineKeyboardButton();
             button.setText(buttons[i]);
             button.setCallbackData(callbacks[i]);
             rows.add(Collections.singletonList(button));
         }
-
         markup.setKeyboard(rows);
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
@@ -882,6 +819,7 @@ public class ClientBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void sendMessages(long chatId, String message) {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(String.valueOf(chatId));

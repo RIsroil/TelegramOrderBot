@@ -1,11 +1,12 @@
 package com.example.demo.service;
 
 import com.example.demo.config.BotConfig;
-import com.example.demo.model.*;
+import com.example.demo.model.Client;
+import com.example.demo.model.Menu;
+import com.example.demo.model.UserState;
 import com.example.demo.repository.ClientRepository;
 import com.example.demo.repository.MenuRepository;
 import com.example.demo.repository.UserStateRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
@@ -18,7 +19,6 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMar
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-
 import java.util.ArrayList;
 import java.util.List;
 

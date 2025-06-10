@@ -1,20 +1,18 @@
 package com.example.demo.repository;
 
-import com.example.demo.model.OrderHistory;
 import com.example.demo.model.Client;
+import com.example.demo.model.OrderHistory;
 import com.example.demo.model.OrderStatus;
-import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 public interface OrderHistoryRepository extends JpaRepository<OrderHistory, Long> {
+
     List<OrderHistory> findByClient(Client client);
     Optional<OrderHistory> findByClientAndOrderIndex(Client client, Long orderIndex);
 
@@ -39,11 +37,7 @@ public interface OrderHistoryRepository extends JpaRepository<OrderHistory, Long
     List<OrderHistory> findByClientAndOrderDateAfter(Client client, LocalDateTime orderDate);
     int countByClientPhoneNumberAndStatus(String clientPhoneNumber, OrderStatus status);
 
-
-
     @Query("SELECT o.client.phoneNumber, COUNT(o) FROM OrderHistory o WHERE o.status = 'CANCELED' AND o.orderDate >= :from GROUP BY o.client.phoneNumber")
     List<Object[]> findCanceledOrdersCountForClients(@Param("from") LocalDateTime from);
-
-
 }
 

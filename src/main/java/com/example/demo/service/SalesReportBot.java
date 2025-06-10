@@ -18,7 +18,6 @@ import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScope
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -66,7 +65,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
     private final Map<Long, String> userState = new HashMap<>();
     private final Map<Long, LocalDate> userInputDates = new HashMap<>();
 
-
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -86,7 +84,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
                 case "/Sana_boyicha_hisobot" -> showDateSelectionOptions(chatId);
                 case "/Oldingi_oyning_hisobi" -> showPreviousMonthReportOptions(chatId);
                 case "/Oldingi_haftaning_hisobi" -> showPreviousWeekReportOptions(chatId);
-//                default -> sendMessage(chatId, "Iltimos, mavjud buyruqlardan birini tanlang: /start ni bosing");
             }
             if (userState.containsKey(chatId)) {
                 handleCustomDateSelectionSold(chatId, message);
@@ -263,6 +260,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void sendReportOptions(long chatId) {
         String text = "Qaysi davr uchun hisobot olmoqchisiz?";
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
@@ -278,7 +276,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
         markup.setKeyboard(rows);
         sendMessageWithMarkup(chatId, text, markup);
     }
-
 
     private void sendCanceledOrders(long chatId) {
         LocalDateTime twoMonthAgo = LocalDateTime.now().minusMonths(2);
@@ -300,16 +297,14 @@ public class SalesReportBot extends TelegramLongPollingBot {
         StringBuilder text = new StringBuilder("📞 Oxirgi 2 oy ichida CANCELED qilgan buyurtmalar:\n\n");
 
         for (Map.Entry<String, String> entry : phoneOrders.entrySet()) {
-            String name = entry.getValue(); // Mijoz ismi
-            String phone = entry.getKey(); // Telefon raqami
+            String name = entry.getValue();
+            String phone = entry.getKey();
             String status = blockedUsersRepository.existsByPhoneNumber(phone) ? "(Bloklangan)" : "(Aktiv)"; // Bloklangan yoki yo'q
             int cancelCount = orderHistoryRepository.countByClientPhoneNumberAndStatus(phone, OrderStatus.CANCELED); // Bekor qilganlar soni
 
-            // Formatlangan matnni qo‘shish
             text.append(String.format("👤 %-5s %-5s - 📞 %-5s - ❌ %d bora\n",
                     name + status, "", phone, cancelCount));
         }
-//        rows.add(List.of(createButton("Foydalanuvchi tarixi:", "PHONE_")));
         rows.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_CANCELED_TO_WELCOME")));
         rows.add(List.of(createButton("Foydalanuvchilarni Bloklash", "BLOCK_USERS")));
         rows.add(List.of(createButton("Foydalanuvchilarni Blokdan chiqarish", "BLOCKED_USERS")));
@@ -354,7 +349,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
         sendMessageWithMarkup(chatId, "📞 Oxirgi 3 oyda buyurtma bergan mijozlar:", markup);
     }
 
-
     private void sendOrderReport(long chatId, OrderStatus status) {
         List<OrderHistory> orders = orderHistoryRepository.findByStatusAndOrderDateBetween(
                 status, LocalDate.now().minusWeeks(2).atStartOfDay(), LocalDate.now().atTime(23, 59, 59));
@@ -372,7 +366,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
 
         sendMessageWithMarkup(chatId, report.toString(), markup);
     }
-
 
     private void sendDailyOptions(long chatId) {
         String text1 = "Nimani ko'rmoqchisiz?";
@@ -396,6 +389,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void sendWeeklyOptions(long chatId) {
         String text1 = "Nimani ko'rmoqchisiz?";
         InlineKeyboardMarkup markup1 = new InlineKeyboardMarkup();
@@ -404,7 +398,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
         row2.add(List.of(createButton("📊 Sotilgan maxsulotlar", "SOLD_ITEMS_WEEK")));
         row2.add(List.of(createButton("🟡 Buyurtma qilingan", "ORDERED_ITEMS_WEEK")));
         row2.add(List.of(createButton("🔴 Bekor qilingan maxsulotlar", "CANCELED_ITEMS_WEEK")));
-
         markup1.setKeyboard(row2);
 
         SendMessage message = new SendMessage();
@@ -418,6 +411,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void sendMonthlyOptions(long chatId) {
         String text1 = "Nimani ko'rmoqchisiz?";
         InlineKeyboardMarkup markup1 = new InlineKeyboardMarkup();
@@ -441,16 +435,13 @@ public class SalesReportBot extends TelegramLongPollingBot {
         }
     }
 
-
     private void showPreviousWeekReportOptions(long chatId) {
         String text1 = "Nimani ko'rmoqchisiz?";
         InlineKeyboardMarkup markup1 = new InlineKeyboardMarkup();
-
         List<List<InlineKeyboardButton>> row2 = new ArrayList<>();
         row2.add(List.of(createButton("📊 Sotilgan maxsulotlar", "LAST_WEEK_REPORT_SOLD")));
         row2.add(List.of(createButton("🟡 Buyurtma qilingan", "LAST_WEEK_REPORT_ORDERED")));
         row2.add(List.of(createButton("🔴 Bekor qilingan maxsulotlar", "LAST_WEEK_REPORT_CANCELED")));
-
         markup1.setKeyboard(row2);
 
         SendMessage message = new SendMessage();
@@ -464,25 +455,27 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void showPreviousWeekReportSold(long chatId) {
         LocalDate today = LocalDate.now();
         LocalDate startOfLastWeek = today.minusWeeks(1).with(DayOfWeek.MONDAY);
         LocalDate endOfLastWeek = today.minusWeeks(1).with(DayOfWeek.SUNDAY);
         sendSoldReport(chatId, startOfLastWeek, endOfLastWeek);
     }
+
     private void showPreviousWeekReportOrdered(long chatId) {
         LocalDate today = LocalDate.now();
         LocalDate startOfLastWeek = today.minusWeeks(1).with(DayOfWeek.MONDAY);
         LocalDate endOfLastWeek = today.minusWeeks(1).with(DayOfWeek.SUNDAY);
         sendOrderedReport(chatId, startOfLastWeek, endOfLastWeek);
     }
+
     private void showPreviousWeekReportCanceled(long chatId) {
         LocalDate today = LocalDate.now();
         LocalDate startOfLastWeek = today.minusWeeks(1).with(DayOfWeek.MONDAY);
         LocalDate endOfLastWeek = today.minusWeeks(1).with(DayOfWeek.SUNDAY);
         sendCancelReport(chatId, startOfLastWeek, endOfLastWeek);
     }
-
 
     private void showPreviousMonthReportOptions(long chatId) {
         String text1 = "Nimani ko'rmoqchisiz?";
@@ -506,25 +499,27 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void showPreviousMonthReportSold(long chatId) {
         LocalDate today = LocalDate.now();
         LocalDate firstDayOfLastMonth = today.minusMonths(1).withDayOfMonth(1);
         LocalDate lastDayOfLastMonth = today.minusMonths(1).with(TemporalAdjusters.lastDayOfMonth());
         sendSoldReport(chatId, firstDayOfLastMonth, lastDayOfLastMonth);
     }
+
     private void showPreviousMonthReportCanceled(long chatId) {
         LocalDate today = LocalDate.now();
         LocalDate firstDayOfLastMonth = today.minusMonths(1).withDayOfMonth(1);
         LocalDate lastDayOfLastMonth = today.minusMonths(1).with(TemporalAdjusters.lastDayOfMonth());
         sendCancelReport(chatId, firstDayOfLastMonth, lastDayOfLastMonth);
     }
+
     private void showPreviousMonthReportOrdered(long chatId) {
         LocalDate today = LocalDate.now();
         LocalDate firstDayOfLastMonth = today.minusMonths(1).withDayOfMonth(1);
         LocalDate lastDayOfLastMonth = today.minusMonths(1).with(TemporalAdjusters.lastDayOfMonth());
         sendOrderedReport(chatId, firstDayOfLastMonth, lastDayOfLastMonth);
     }
-
 
     private void showDateSelectionOptions(long chatId) {
         String text1 = "Sanalar orasida nimani ko'rmoqchisiz?";
@@ -548,18 +543,22 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void showDateSelectionSold(long chatId) {
         sendMessage(chatId, "📅 Qaysi sanalardagi hisobotlarni ko‘rmoqchisiz?\n\nIltimos, boshlanish sanasini kiriting (kun/oy/yil formatida). Napr: 01/03/2025 | Ortga qaytish uchun /start yoki /yordam ni bosing");
         userState.put(chatId, "AWAITING_START_DATE_SOLD");
     }
+
     private void showDateSelectionOrdered(long chatId) {
         sendMessage(chatId, "📅 Qaysi sanalardagi hisobotlarni ko‘rmoqchisiz?\n\nIltimos, boshlanish sanasini kiriting (kun/oy/yil formatida). Napr: 01/03/2025 | Ortga qaytish uchun /start yoki /yordam ni bosing");
         userState.put(chatId, "AWAITING_START_DATE_ORDERED");
     }
+
     private void showDateSelectionCanceled(long chatId) {
         sendMessage(chatId, "📅 Qaysi sanalardagi hisobotlarni ko‘rmoqchisiz?\n\nIltimos, boshlanish sanasini kiriting (kun/oy/yil formatida). Napr: 01/03/2025 | Ortga qaytish uchun /start yoki /yordam ni bosing");
         userState.put(chatId, "AWAITING_START_DATE_CANCELED");
     }
+
     private void handleCustomDateSelectionSold(long chatId, String text) {
         if (userState.get(chatId).equals("AWAITING_START_DATE_SOLD")) {
             userInputDates.put(chatId, LocalDate.parse(text, DateTimeFormatter.ofPattern("dd/MM/yyyy")));
@@ -573,6 +572,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
             userInputDates.remove(chatId);
         }
     }
+
     private void handleCustomDateSelectionOrdered(long chatId, String text) {
         if (userState.get(chatId).equals("AWAITING_START_DATE_ORDERED")) {
             userInputDates.put(chatId, LocalDate.parse(text, DateTimeFormatter.ofPattern("dd/MM/yyyy")));
@@ -586,6 +586,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
             userInputDates.remove(chatId);
         }
     }
+
     private void handleCustomDateSelectionCanceled(long chatId, String text) {
         if (userState.get(chatId).equals("AWAITING_START_DATE_CANCELED")) {
             userInputDates.put(chatId, LocalDate.parse(text, DateTimeFormatter.ofPattern("dd/MM/yyyy")));
@@ -599,7 +600,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
             userInputDates.remove(chatId);
         }
     }
-
 
     private void sendSoldReport(long chatId, LocalDate from, LocalDate to) {
         LocalDate today = LocalDate.now();
@@ -658,6 +658,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
         report.append(String.format("\n💰 **Umumiy summa:** %.2f so‘m", totalRevenue));
         sendMessage(chatId, report.toString());
     }
+
     private void sendOrderedReport(long chatId, LocalDate from, LocalDate to) {
         LocalDate today = LocalDate.now();
         LocalDate threeMonthsAgo = today.minusMonths(3);
@@ -715,6 +716,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
         report.append(String.format("\n💰 **Umumiy summa:** %.2f so‘m", totalRevenue));
         sendMessage(chatId, report.toString());
     }
+
     private void sendCancelReport(long chatId, LocalDate from, LocalDate to) {
         LocalDate today = LocalDate.now();
         LocalDate threeMonthsAgo = today.minusMonths(3);
@@ -773,7 +775,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
         sendMessage(chatId, report.toString());
     }
 
-
     private void sendMessage(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
@@ -785,6 +786,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private void sendMessageWithMarkup(long chatId, String text, InlineKeyboardMarkup markup) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
@@ -797,6 +799,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
     }
+
     private InlineKeyboardButton createButton(String text, String callbackData) {
         InlineKeyboardButton button = new InlineKeyboardButton();
         button.setText(text);
@@ -843,28 +846,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
         sendMessageWithMarkup(chatId, text.toString(), markup);
     }
 
-
-//    private void handleBlockUser(long chatId, String phoneNumber, int days) {
-//        Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
-//        if (optionalClient.isEmpty()) {
-//            sendMessage(chatId, "❌ Foydalanuvchi topilmadi.");
-//            return;
-//        }
-//
-//        Client client = optionalClient.get();
-//        if (client.isBlocked()) {
-//            sendMessage(chatId, "🚫 " + client.getName()+"-> "+ client.getPhoneNumber() + " allaqachon bloklangan. " +
-//                    "Blok tugash vaqti: " + client.getBlockedUntil() + "      /start");
-//            return;
-//        }
-//
-//        client.blockForDays(days);
-//        clientRepository.save(client);
-//
-//        sendMessage(chatId, "🚫 " + client.getName() +"-> "+ client.getPhoneNumber() + " " + days + " kun bloklandi.\n" +
-//                "Blok tugash vaqti: " + client.getBlockedUntil() + "      /start");
-//    }
-
     private void handleBlockUser(long chatId, String phoneNumber, int days) {
         Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
         if (optionalClient.isEmpty()) {
@@ -891,29 +872,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
                 + "📅 Tugash sanasi: " + blockUntil.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm")));
     }
 
-
-    private void handleUnblockUser(long chatId, String phoneNumber) {
-        Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
-        if (optionalClient.isEmpty()) {
-            sendMessage(chatId, "❌ Foydalanuvchi topilmadi.");
-            return;
-        }
-
-        Client client = optionalClient.get();
-
-        // **BlockedUser jadvalidan o‘chirish**
-        blockedUserRepository.deleteByPhoneNumber(phoneNumber); // ✅ O‘chiramiz
-
-        // **Client jadvalida bloklanganligini olib tashlash**
-        client.setBlocked(false);  // ✅ `isBlocked=false`
-        clientRepository.save(client);
-
-        sendMessage(chatId, "✅ " + client.getName() + " blokdan chiqarildi.");
-    }
-
-
-
-
     private void confirmBlockUser(long chatId, String phoneNumber, int days) {
         LocalDateTime blockedUntil = LocalDateTime.now().plusDays(days);
         BlockedUser blockedUser = new BlockedUser(phoneNumber, blockedUntil);
@@ -928,6 +886,7 @@ public class SalesReportBot extends TelegramLongPollingBot {
 
         sendCanceledUsersList(chatId);
     }
+
     private void sendBlockedUsers(long chatId) {
         List<Object[]> clients = orderHistoryRepository.findClientsWithCanceledOrdersLast2Months(LocalDateTime.now().minusMonths(2));
 
@@ -958,7 +917,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
         sendMessageWithMarkup(chatId, text, markup);
     }
 
-
     private void unblockUser(long chatId, String phoneNumber) {
         Optional<Client> optionalClient = clientRepository.findByPhoneNumber(phoneNumber);
         if (optionalClient.isEmpty()) {
@@ -978,15 +936,14 @@ public class SalesReportBot extends TelegramLongPollingBot {
         sendMessage(chatId, "✅ " + client.getName() + " blokdan chiqarildi.");
     }
 
-
     private void sendMessageToClientBot(String phoneNumber, String text) {
-        // Foydalanuvchini telefon raqami bo‘yicha topamiz
         Client client = clientRepository.findByPhoneNumber(phoneNumber).orElse(null);
         if (client != null) {
             long chatId = client.getChatId();
             sendMessage(chatId, text);
         }
     }
+
     private void sendUnblockedUsers(long chatId) {
         List<Client> blockedClients = clientRepository.findByIsBlockedTrue(); // 🔹 Faqat bloklanganlarni olish
 
@@ -1007,29 +964,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
 
         sendMessageWithMarkup(chatId, "🔓 Blokdan chiqarish uchun foydalanuvchini tanlang:", markup);
     }
-
-//    private void sendUnblockedUsers(long chatId) {
-//        List<Client> clients = clientRepository.findAll();
-//        if (clients.isEmpty()) {
-//            sendMessage(chatId, "❌ Bloklangan foydalanuvchilar yo‘q.");
-//            return;
-//        }
-//
-//        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-//        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-//
-//        for (Client client : clients) {
-//            if (client.isBlocked()) { // Faqat bloklanganlarni chiqarish
-//                rows.add(List.of(createButton("✅ " + client.getName(), "UNBLOCK_USER_" + client.getPhoneNumber())));
-//            }
-//        }
-//
-//        rows.add(List.of(createButton("⬅️ Orqaga", "BACK_TO_CANCELED")));
-//        markup.setKeyboard(rows);
-//
-//        sendMessageWithMarkup(chatId, "🔓 Blokdan chiqarish uchun foydalanuvchini tanlang:", markup);
-//    }
-
 
     private void sendBlockedUsersList(long chatId) {
         List<BlockedUser> blockedUsers = blockedUserRepository.findAll();
@@ -1073,23 +1007,17 @@ public class SalesReportBot extends TelegramLongPollingBot {
     }
 
     private void sendUserOrderHistory(long chatId, String phoneNumber, Client client) {
-        LocalDateTime twoMonthsAgo = LocalDateTime.now().minusMonths(2); // 2 hafta -> 2 oy
-
-        // Buyurtmalarni status bo‘yicha olish
+        LocalDateTime twoMonthsAgo = LocalDateTime.now().minusMonths(2);
         List<OrderHistory> userOrders = orderHistoryRepository.findByClientAndOrderDateAfter(client, twoMonthsAgo);
-
         if (userOrders.isEmpty()) {
             sendMessage(chatId, "❌ " + phoneNumber + " oxirgi 2 oyda hech qanday buyurtma qilmagan.");
             return;
         }
-
         StringBuilder report = new StringBuilder("📜 *" + phoneNumber + "* oxirgi 2 oylik buyurtmalari:\n\n");
-
         for (OrderHistory order : userOrders) {
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
             String formattedDate = order.getOrderDate().format(formatter);
 
-            // Buyurtma statusiga qarab teg qo‘shish
             String statusTag = switch (order.getStatus()) {
                 case SOLD -> "🟢 Sotilgan Buyurtma";
                 case CANCELED -> "🔴 Bekor qilingan Buyurtma";
@@ -1106,7 +1034,6 @@ public class SalesReportBot extends TelegramLongPollingBot {
                     .append("------------------\n");
         }
 
-        // Inline tugmalar
         List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
         buttons.add(List.of(createButton("🚫 Foydalanuvchini Bloklash", "BLOCK_USER_" + phoneNumber)));
         buttons.add(List.of(createButton("⬅️ Orqaga", "SHOW_CLIENT_PHONES"))) ;

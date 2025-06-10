@@ -5,10 +5,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 
-import java.security.Timestamp;
-import java.time.LocalDate;
-import java.util.Date;
-
 @Entity(name ="jon_food_menu")
 public class Menu {
     @Id
